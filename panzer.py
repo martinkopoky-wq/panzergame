@@ -6,8 +6,10 @@
     python panzer.py join <ip[:port]>   Einem Spiel beitreten
     python panzer.py local              2 Spieler an einer Tastatur
 
-Der Host ist autoritativ: er simuliert das Spiel, der Client schickt nur seine
-Tasten und bekommt jeden Frame den kompletten Zustand zurück (JSON-Zeilen über TCP).
+Netzwerk: Der Host ist autoritativ und simuliert mit festen 60 Ticks/s. Er schickt
+30 Snapshots/s, der Client schickt 30 Pakete/s mit allen Eingaben seit dem letzten Paket.
+Der Client sagt seinen eigenen Panzer voraus (Prediction + Abgleich über "ack") und zeigt
+den Rest leicht verzögert und interpoliert an, damit unregelmäßig ankommende Pakete nicht ruckeln.
 """
 import json
 import math
@@ -15,6 +17,8 @@ import random
 import socket
 import sys
 import threading
+import time
+from collections import deque
 from pathlib import Path
 
 import pygame
@@ -25,20 +29,38 @@ PORT = 5555
 W, H = 1000, 680
 ARENA_TOP, ARENA_H = 15, 560
 FPS = 60
+TICK = 1 / 60
+SEND_EVERY = 2            # Snapshot bzw. Input-Paket nur jeden 2. Tick -> 30 Pakete/s
+INTERP_DELAY = 0.075      # so weit in der Vergangenheit rendert der Client die anderen
 
 CELL = 90
 WALL = 8
 TANK_R = 15
-TANK_SPEED = 130          # px/s
+TANK_SPEED = 130              # px/s
 TANK_ROT = math.radians(200)  # rad/s
-MUZZLE = 20               # Abstand Mitte -> Rohrende
+MUZZLE = 20                   # Abstand Mitte -> Rohrende
 BULLET_R = 4
 BULLET_SPEED = 220
 BULLET_LIFE = 10.0
 MAX_BULLETS = 5
 FIRE_COOLDOWN = 0.12
-OWNER_GRACE = 0.1         # so lange kann man sich nicht selbst treffen
+OWNER_GRACE = 0.1             # so lange kann man sich nicht selbst treffen
 ROUND_END_DELAY = 3.0
+
+# Power-ups
+BOX_FIRST = 4.0
+BOX_EVERY = (6.0, 11.0)
+BOX_MAX = 3
+BOX_PICK = TANK_R + 12
+POWERUPS = ["frag", "mg", "laser", "rocket", "shield"]
+POWERUP_NAMES = {"frag": "Splitterbombe", "mg": "MG", "laser": "Laser",
+                 "rocket": "Lenkrakete", "shield": "Schild"}
+FRAG_R, FRAG_SPEED, FRAG_FUSE, FRAG_PIECES = 7, 170, 5.0, 26
+MG_AMMO, MG_RATE, MG_SPREAD, MG_R, MG_LIFE = 25, 0.07, 0.12, 3, 4.0
+LASER_LEN, LASER_SHOW = 1400, 0.45
+ROCKET_R, ROCKET_SPEED, ROCKET_TURN, ROCKET_LIFE = 5, 170, 4.0, 10.0
+ROCKET_DELAY, ROCKET_GRACE = 0.4, 0.8
+SHIELD_TIME = 8.0
 
 COLORS = [(220, 35, 35), (35, 190, 45)]
 NAMES = ["Rot", "Grün"]
@@ -46,13 +68,14 @@ BG = (255, 255, 255)
 FLOOR = (228, 228, 228)
 WALL_C = (77, 77, 77)
 TEXT_C = (40, 40, 40)
+SHOT_C = (30, 30, 30)
 
-UP, DOWN, LEFT, RIGHT = 1, 2, 4, 8
+UP, DOWN, LEFT, RIGHT, FIRE = 1, 2, 4, 8, 16
 
 LAST_IP_FILE = Path(__file__).with_name(".panzer_last_ip")
 
 
-# --- Labyrinth --------------------------------------------------------------
+# --- Labyrinth & Geometrie --------------------------------------------------
 
 def generate_maze(maze_id):
     cols, rows = random.randint(6, 10), random.randint(4, 6)
@@ -124,15 +147,14 @@ def generate_maze(maze_id):
     return {"id": maze_id, "cols": cols, "rows": rows, "ox": ox, "oy": oy, "walls": walls}
 
 
-def circle_hits_rect(cx, cy, r, rect):
-    x, y, w, h = rect
-    nx = min(max(cx, x), x + w)
-    ny = min(max(cy, y), y + h)
-    return (cx - nx) ** 2 + (cy - ny) ** 2 < r * r
-
-
 def circle_hits_walls(cx, cy, r, walls):
-    return any(circle_hits_rect(cx, cy, r, w) for w in walls)
+    r2 = r * r
+    for x, y, w, h in walls:
+        nx = x if cx < x else x + w if cx > x + w else cx
+        ny = y if cy < y else y + h if cy > y + h else cy
+        if (cx - nx) ** 2 + (cy - ny) ** 2 < r2:
+            return True
+    return False
 
 
 def push_out(cx, cy, r, walls):
@@ -167,6 +189,156 @@ def push_out(cx, cy, r, walls):
     return cx, cy
 
 
+def ray_box(x, y, dx, dy, bx, by, bw, bh):
+    """Eintritts-Distanz eines Strahls in ein Rechteck und die getroffene Achse."""
+    if abs(dx) < 1e-12:
+        if not bx <= x <= bx + bw:
+            return None, None
+        tx0, tx1 = -math.inf, math.inf
+    else:
+        t1, t2 = (bx - x) / dx, (bx + bw - x) / dx
+        tx0, tx1 = min(t1, t2), max(t1, t2)
+    if abs(dy) < 1e-12:
+        if not by <= y <= by + bh:
+            return None, None
+        ty0, ty1 = -math.inf, math.inf
+    else:
+        t1, t2 = (by - y) / dy, (by + bh - y) / dy
+        ty0, ty1 = min(t1, t2), max(t1, t2)
+    t_in, t_out = max(tx0, ty0), min(tx1, ty1)
+    if t_in > t_out or t_in < 1e-9:  # verfehlt, dahinter oder wir stecken drin
+        return None, None
+    axis = "x" if tx0 > ty0 + 1e-9 else "y" if ty0 > tx0 + 1e-9 else "xy"
+    return t_in, axis
+
+
+def ray_circle(x, y, dx, dy, cx, cy, r):
+    fx, fy = x - cx, y - cy
+    b = fx * dx + fy * dy
+    c = fx * fx + fy * fy - r * r
+    if c < 0:  # Start im Kreis -> ignorieren (eigener Panzer)
+        return None
+    disc = b * b - c
+    if disc < 0:
+        return None
+    t = -b - math.sqrt(disc)
+    return t if t > 0 else None
+
+
+class Arena:
+    """Labyrinth mit Broadphase-Gitter und Zell-Nachbarschaft. Läuft auf Host und Client."""
+    MARGIN = 24
+
+    def __init__(self, maze):
+        self.maze = maze
+        self.id = maze["id"]
+        self.cols, self.rows = maze["cols"], maze["rows"]
+        self.ox, self.oy = maze["ox"], maze["oy"]
+        self.walls = [tuple(w) for w in maze["walls"]]
+        m = self.MARGIN
+        # Pro Zelle nur die Wände in der Nähe -> Kollisionstests prüfen ~4 statt ~30 Rechtecke
+        self.grid = []
+        for r in range(self.rows):
+            row = []
+            for c in range(self.cols):
+                x0, y0 = self.ox + c * CELL - m, self.oy + r * CELL - m
+                x1, y1 = x0 + CELL + 2 * m, y0 + CELL + 2 * m
+                row.append([w for w in self.walls
+                            if w[0] < x1 and w[0] + w[2] > x0 and w[1] < y1 and w[1] + w[3] > y0])
+            self.grid.append(row)
+        # Welche Nachbarzellen sind offen verbunden (für die Lenkrakete)
+        self.nbrs = {(r, c): [] for r in range(self.rows) for c in range(self.cols)}
+        for r in range(self.rows):
+            for c in range(self.cols):
+                for dr, dc in ((0, 1), (1, 0)):
+                    r2, c2 = r + dr, c + dc
+                    if r2 >= self.rows or c2 >= self.cols:
+                        continue
+                    if dc:
+                        px, py = self.ox + c2 * CELL, self.oy + r * CELL + CELL / 2
+                    else:
+                        px, py = self.ox + c * CELL + CELL / 2, self.oy + r2 * CELL
+                    if not any(x <= px <= x + w and y <= py <= y + h for x, y, w, h in self.walls):
+                        self.nbrs[(r, c)].append((r2, c2))
+                        self.nbrs[(r2, c2)].append((r, c))
+
+    def cell(self, x, y):
+        c = min(max(int((x - self.ox) // CELL), 0), self.cols - 1)
+        r = min(max(int((y - self.oy) // CELL), 0), self.rows - 1)
+        return r, c
+
+    def near(self, x, y):
+        r, c = self.cell(x, y)
+        return self.grid[r][c]
+
+    def center(self, r, c):
+        return self.ox + c * CELL + CELL / 2, self.oy + r * CELL + CELL / 2
+
+    def path(self, start, goal):
+        prev = {start: None}
+        q = deque([start])
+        while q:
+            cur = q.popleft()
+            if cur == goal:
+                break
+            for n in self.nbrs[cur]:
+                if n not in prev:
+                    prev[n] = cur
+                    q.append(n)
+        if goal not in prev:
+            return [start]
+        out = [goal]
+        while prev[out[-1]] is not None:
+            out.append(prev[out[-1]])
+        return out[::-1]
+
+    def raycast(self, x, y, a, length, circles=()):
+        """Abprallender Strahl. Gibt (Punkte, Index des getroffenen Kreises oder None) zurück."""
+        dx, dy = math.cos(a), math.sin(a)
+        pts = [(x, y)]
+        for _ in range(40):
+            if length <= 0.5:
+                break
+            t_wall, axis = length, None
+            for w in self.walls:
+                t, ax = ray_box(x, y, dx, dy, *w)
+                if t is not None and t < t_wall:
+                    t_wall, axis = t, ax
+            best, hit = t_wall, None
+            for i, (cx, cy, cr) in enumerate(circles):
+                t = ray_circle(x, y, dx, dy, cx, cy, cr)
+                if t is not None and t < best:
+                    best, hit = t, i
+            if hit is not None:
+                pts.append((x + dx * best, y + dy * best))
+                return pts, hit
+            x, y = x + dx * t_wall, y + dy * t_wall
+            pts.append((x, y))
+            length -= t_wall
+            if axis is None:
+                break
+            if "x" in axis:
+                dx = -dx
+            if "y" in axis:
+                dy = -dy
+            x, y = x + dx * 0.01, y + dy * 0.01
+        return pts, None
+
+
+def move_tank(t, keys, dt, arena):
+    """Panzerbewegung – identisch auf Host und Client (Prediction)."""
+    if keys & LEFT:
+        t.a -= TANK_ROT * dt
+    if keys & RIGHT:
+        t.a += TANK_ROT * dt
+    t.a %= 2 * math.pi
+    move = (1 if keys & UP else 0) - (0.7 if keys & DOWN else 0)
+    if move:
+        t.x += math.cos(t.a) * TANK_SPEED * move * dt
+        t.y += math.sin(t.a) * TANK_SPEED * move * dt
+        t.x, t.y = push_out(t.x, t.y, TANK_R, arena.near(t.x, t.y))
+
+
 # --- Spiellogik (läuft nur beim Host bzw. lokal) -----------------------------
 
 class Tank:
@@ -176,41 +348,54 @@ class Tank:
         self.dead_age = 0.0
         self.cooldown = 0.0
         self.fire_seen = None
+        self.weapon = None
+        self.ammo = 0
+        self.shield = 0.0
 
 
-class Bullet:
-    def __init__(self, owner, x, y, a):
-        self.owner = owner
+class Shot:
+    __slots__ = ("id", "kind", "owner", "x", "y", "vx", "vy", "speed", "r", "life", "grace", "age")
+
+    def __init__(self, sid, kind, owner, x, y, a, speed, r, life, grace):
+        self.id, self.kind, self.owner = sid, kind, owner
         self.x, self.y = x, y
-        self.vx, self.vy = math.cos(a) * BULLET_SPEED, math.sin(a) * BULLET_SPEED
+        self.vx, self.vy = math.cos(a) * speed, math.sin(a) * speed
+        self.speed, self.r, self.life, self.grace = speed, r, life, grace
         self.age = 0.0
 
-    def travel(self, dist, walls):
-        """Bewegt die Kugel um dist Pixel, prallt achsweise an Wänden ab."""
-        steps = max(1, math.ceil(dist / 2))
-        f = dist / BULLET_SPEED / steps
+    def travel(self, dt, arena):
+        """Bewegt die Kugel, prallt achsweise an Wänden ab (Substeps von max. 3 px)."""
+        steps = max(1, math.ceil(self.speed * dt / 3))
+        f = dt / steps
         for _ in range(steps):
             self.x += self.vx * f
-            if circle_hits_walls(self.x, self.y, BULLET_R, walls):
+            if circle_hits_walls(self.x, self.y, self.r, arena.near(self.x, self.y)):
                 self.x -= self.vx * f
                 self.vx = -self.vx
             self.y += self.vy * f
-            if circle_hits_walls(self.x, self.y, BULLET_R, walls):
+            if circle_hits_walls(self.x, self.y, self.r, arena.near(self.x, self.y)):
                 self.y -= self.vy * f
                 self.vy = -self.vy
+
+
+class Fx:
+    def __init__(self, kind, data, life):
+        self.kind, self.data, self.life, self.age = kind, data, life, 0.0
 
 
 class Game:
     def __init__(self):
         self.scores = [0, 0]
         self.maze_id = 0
+        self.time = 0.0
+        self.next_id = 0
         self.fire_seen = [None, None]
         self.new_round()
 
     def new_round(self):
         self.maze_id += 1
         self.maze = generate_maze(self.maze_id)
-        self.walls = self.maze["walls"]
+        self.arena = Arena(self.maze)
         m = self.maze
         cells = [(r, c) for r in range(m["rows"]) for c in range(m["cols"])]
         min_dist = (m["rows"] + m["cols"]) // 2
@@ -220,40 +405,121 @@ class Game:
                 break
         self.tanks = []
         for i, (r, c) in enumerate((a, b)):
-            t = Tank(m["ox"] + c * CELL + CELL / 2, m["oy"] + r * CELL + CELL / 2,
-                     random.choice((0, 0.5, 1, 1.5)) * math.pi)
+            t = Tank(*self.arena.center(r, c), random.choice((0, 0.5, 1, 1.5)) * math.pi)
             t.fire_seen = self.fire_seen[i]
             self.tanks.append(t)
-        self.bullets = []
+        self.shots = []
+        self.boxes = []
+        self.fx = []
+        self.box_timer = BOX_FIRST
         self.end_timer = None
         self.msg = None
 
-    def update(self, dt, inputs):
-        """inputs: pro Spieler (tasten_bits, schuss_zähler)."""
-        for i, (t, (keys, fires)) in enumerate(zip(self.tanks, inputs)):
-            # Schuss-Zähler: jeder Tastendruck erhöht ihn -> keine verlorenen Taps
-            new_shot = t.fire_seen is not None and fires > t.fire_seen
-            t.fire_seen = self.fire_seen[i] = fires
+    # Eingabe eines Spielers. Beim Client-Panzer wird das pro empfangenem Input-Kommando
+    # mit dessen dt aufgerufen, damit die Prediction des Clients exakt übereinstimmt.
+    def apply_input(self, i, keys, fires, dt):
+        t = self.tanks[i]
+        # Schuss-Zähler: jeder Tastendruck erhöht ihn -> keine verlorenen Taps
+        new_shot = t.fire_seen is not None and fires > t.fire_seen
+        t.fire_seen = self.fire_seen[i] = fires
+        if not t.alive:
+            return
+        move_tank(t, keys, dt, self.arena)
+        t.cooldown = max(0.0, t.cooldown - dt)
+        if new_shot:
+            self._trigger(i, t)
+        if t.weapon == "mg" and keys & FIRE and t.cooldown == 0:
+            self._shoot("mg", i, t, t.a + random.uniform(-MG_SPREAD, MG_SPREAD),
+                        BULLET_SPEED * 1.1, MG_R, MG_LIFE, OWNER_GRACE)
+            t.cooldown = MG_RATE
+            t.ammo -= 1
+            if t.ammo <= 0:
+                t.weapon = None
+
+    def _shoot(self, kind, owner, t, a, speed, r, life, grace):
+        s = Shot(self.next_id, kind, owner, t.x, t.y, a, speed, r, life, grace)
+        self.next_id += 1
+        s.travel(MUZZLE / speed, self.arena)  # von der Mitte bis zum Rohrende, prallt korrekt ab
+        self.shots.append(s)
+
+    def _trigger(self, i, t):
+        bomb = next((s for s in self.shots if s.kind == "frag" and s.owner == i), None)
+        if bomb:  # 2. Druck: Splitterbombe zünden
+            self._explode(bomb)
+            return
+        if t.cooldown > 0 or t.weapon == "mg":
+            return
+        if t.weapon == "frag":
+            self._shoot("frag", i, t, t.a, FRAG_SPEED, FRAG_R, FRAG_FUSE, 0.3)
+        elif t.weapon == "rocket":
+            self._shoot("rocket", i, t, t.a, ROCKET_SPEED, ROCKET_R, ROCKET_LIFE, ROCKET_GRACE)
+        elif t.weapon == "laser":
+            self._laser(i, t)
+        elif sum(1 for s in self.shots if s.owner == i and s.kind == "b") < MAX_BULLETS:
+            self._shoot("b", i, t, t.a, BULLET_SPEED, BULLET_R, BULLET_LIFE, OWNER_GRACE)
+        else:
+            return
+        t.weapon = None
+        t.cooldown = FIRE_COOLDOWN
+
+    def _explode(self, bomb):
+        self.shots.remove(bomb)
+        for k in range(FRAG_PIECES):
+            a = 2 * math.pi * k / FRAG_PIECES + random.uniform(-0.1, 0.1)
+            self.shots.append(Shot(self.next_id, "frg", bomb.owner, bomb.x, bomb.y, a,
+                                   random.uniform(200, 300), 2, random.uniform(0.5, 0.9), 0))
+            self.next_id += 1
+        self.fx.append(Fx("boom", [round(bomb.x), round(bomb.y)], 0.5))
+
+    def _laser(self, i, t):
+        targets = [j for j, o in enumerate(self.tanks) if o.alive]
+        circles = [(self.tanks[j].x, self.tanks[j].y, TANK_R) for j in targets]
+        pts, hit = self.arena.raycast(t.x, t.y, t.a, LASER_LEN, circles)
+        if hit is not None:
+            self._hit(targets[hit])
+        self.fx.append(Fx("laser", [[round(x), round(y)] for x, y in pts], LASER_SHOW))
+
+    def _hit(self, j):
+        t = self.tanks[j]
+        if t.shield > 0:
+            t.shield = 0.0
+            return
+        t.alive = False
+        t.weapon = None
+        self.fx.append(Fx("boom", [round(t.x), round(t.y)], 0.7))
+
+    def _rocket_steer(self, s, dt):
+        enemies = [t for j, t in enumerate(self.tanks) if t.alive and j != s.owner]
+        if not enemies and s.age > s.grace and self.tanks[s.owner].alive:
+            enemies = [self.tanks[s.owner]]
+        if not enemies:
+            return
+        target = min(enemies, key=lambda t: math.hypot(t.x - s.x, t.y - s.y))
+        path = self.arena.path(self.arena.cell(s.x, s.y), self.arena.cell(target.x, target.y))
+        tx, ty = (target.x, target.y) if len(path) <= 2 else self.arena.center(*path[1])
+        cur = math.atan2(s.vy, s.vx)
+        diff = (math.atan2(ty - s.y, tx - s.x) - cur + math.pi) % (2 * math.pi) - math.pi
+        cur += max(-ROCKET_TURN * dt, min(ROCKET_TURN * dt, diff))
+        s.vx, s.vy = math.cos(cur) * s.speed, math.sin(cur) * s.speed
+
+    def _spawn_box(self):
+        cells = [(r, c) for r in range(self.arena.rows) for c in range(self.arena.cols)]
+        random.shuffle(cells)
+        for r, c in cells:
+            x, y = self.arena.center(r, c)
+            if any(t.alive and math.hypot(t.x - x, t.y - y) < 110 for t in self.tanks):
+                continue
+            if any(math.hypot(b[0] - x, b[1] - y) < 1 for b in self.boxes):
+                continue
+            self.boxes.append([x, y, random.choice(POWERUPS)])
+            return
+
+    def step(self, dt):
+        self.time += dt
+        for t in self.tanks:
             if not t.alive:
                 t.dead_age += dt
-                continue
-            t.cooldown = max(0.0, t.cooldown - dt)
-            if keys & LEFT:
-                t.a -= TANK_ROT * dt
-            if keys & RIGHT:
-                t.a += TANK_ROT * dt
-            t.a %= 2 * math.pi
-            move = (1 if keys & UP else 0) - (0.7 if keys & DOWN else 0)
-            if move:
-                t.x += math.cos(t.a) * TANK_SPEED * move * dt
-                t.y += math.sin(t.a) * TANK_SPEED * move * dt
-                t.x, t.y = push_out(t.x, t.y, TANK_R, self.walls)
-            if new_shot and t.cooldown == 0 and \
-                    sum(1 for b in self.bullets if b.owner == i) < MAX_BULLETS:
-                b = Bullet(i, t.x, t.y, t.a)
-                b.travel(MUZZLE, self.walls)
-                self.bullets.append(b)
-                t.cooldown = FIRE_COOLDOWN
+            t.shield = max(0.0, t.shield - dt)
 
         # Panzer gegeneinander
         t1, t2 = self.tanks
@@ -267,22 +533,52 @@ class Game:
                 t2.x += dx / d * p
                 t2.y += dy / d * p
                 for t in (t1, t2):
-                    t.x, t.y = push_out(t.x, t.y, TANK_R, self.walls)
+                    t.x, t.y = push_out(t.x, t.y, TANK_R, self.arena.near(t.x, t.y))
 
-        # Kugeln
-        for b in self.bullets[:]:
-            b.age += dt
-            if b.age > BULLET_LIFE:
-                self.bullets.remove(b)
-                continue
-            b.travel(BULLET_SPEED * dt, self.walls)
-            for i, t in enumerate(self.tanks):
-                if not t.alive or (i == b.owner and b.age < OWNER_GRACE):
+        # Power-up-Kisten
+        self.box_timer -= dt
+        if self.box_timer <= 0:
+            self.box_timer = random.uniform(*BOX_EVERY)
+            if len(self.boxes) < BOX_MAX and self.end_timer is None:
+                self._spawn_box()
+        for b in self.boxes[:]:
+            for t in self.tanks:
+                if not t.alive or math.hypot(t.x - b[0], t.y - b[1]) > BOX_PICK:
                     continue
-                if math.hypot(t.x - b.x, t.y - b.y) < TANK_R + BULLET_R - 1:
-                    t.alive = False
-                    self.bullets.remove(b)
+                if b[2] == "shield":
+                    t.shield = SHIELD_TIME
+                elif t.weapon is None:
+                    t.weapon = b[2]
+                    t.ammo = MG_AMMO
+                else:
+                    continue  # hat schon eine Waffe -> Kiste bleibt liegen
+                self.boxes.remove(b)
+                break
+
+        # Geschosse
+        for s in self.shots[:]:
+            s.age += dt
+            if s.age > s.life:
+                if s.kind == "frag":
+                    self._explode(s)
+                else:
+                    self.shots.remove(s)
+                continue
+            if s.kind == "rocket" and s.age > ROCKET_DELAY:
+                self._rocket_steer(s, dt)
+            s.travel(dt, self.arena)
+            for j, t in enumerate(self.tanks):
+                if not t.alive or (j == s.owner and s.age < s.grace):
+                    continue
+                if math.hypot(t.x - s.x, t.y - s.y) < TANK_R + s.r - 1:
+                    self.shots.remove(s)
+                    self._hit(j)
                     break
+
+        for f in self.fx[:]:
+            f.age += dt
+            if f.age > f.life:
+                self.fx.remove(f)
 
         # Rundenende
         alive = [i for i, t in enumerate(self.tanks) if t.alive]
@@ -297,13 +593,17 @@ class Game:
                     self.scores[alive[0]] += 1
                 self.new_round()
 
-    def snapshot(self):
+    def snapshot(self, ack=None):
         return {
             "t": "s",
+            "st": round(self.time, 4),
+            "ack": ack,
             "m": self.maze_id,
-            "tk": [[round(t.x, 1), round(t.y, 1), round(t.a, 3), t.alive, round(t.dead_age, 2)]
-                   for t in self.tanks],
-            "b": [[round(b.x, 1), round(b.y, 1)] for b in self.bullets],
+            "tk": [[round(t.x, 1), round(t.y, 1), round(t.a, 3), t.alive, round(t.dead_age, 2),
+                    t.weapon, round(t.shield, 1)] for t in self.tanks],
+            "p": [[s.id, s.kind, round(s.x, 1), round(s.y, 1)] for s in self.shots],
+            "bx": [[round(b[0]), round(b[1]), b[2]] for b in self.boxes],
+            "fx": [[f.kind, round(f.age, 2), f.life, f.data] for f in self.fx],
             "sc": self.scores,
             "msg": self.msg,
         }
@@ -324,8 +624,8 @@ def read_lines(sock, on_msg):
             if not data:
                 return
             buf += data
-            while b"\n" in buf:
-                line, buf = buf.split(b"\n", 1)
+            *lines, buf = buf.split(b"\n")
+            for line in lines:
                 on_msg(json.loads(line))
     except (OSError, ValueError):
         return
@@ -358,15 +658,14 @@ class HostNet:
         self.srv.listen(1)
         self.lock = threading.Lock()
         self.conn = None
-        self.peer = None
         self.gen = 0  # zählt Verbindungen hoch -> Host erkennt neuen Mitspieler
-        self.remote_input = (0, 0)
+        self.cmds = deque()  # Input-Kommandos des Clients: [seq, keys, fires, dt]
         threading.Thread(target=self._accept_loop, daemon=True).start()
 
     def _accept_loop(self):
         while True:
             try:
-                conn, addr = self.srv.accept()
+                conn, _ = self.srv.accept()
             except OSError:
                 return
             with self.lock:
@@ -378,15 +677,17 @@ class HostNet:
                     conn.close()
                     continue
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                self.remote_input = (0, 0)
-                self.conn, self.peer = conn, addr[0]
+                self.cmds = deque()
+                self.conn = conn
                 self.gen += 1
             threading.Thread(target=self._recv_loop, args=(conn,), daemon=True).start()
 
     def _recv_loop(self, conn):
+        cmds = self.cmds
+
         def on_msg(msg):
             if msg.get("t") == "i":
-                self.remote_input = (int(msg["k"]), int(msg["f"]))
+                cmds.extend(msg["c"])
         read_lines(conn, on_msg)
         self._drop(conn)
 
@@ -416,8 +717,9 @@ class ClientNet:
         self.sock = socket.create_connection((host, port), timeout=5)
         self.sock.settimeout(None)
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self.maze = None
-        self.state = None
+        self.arena = None
+        self.snaps = deque(maxlen=40)
+        self.offset = None  # Serverzeit - lokale Zeit
         self.connected = True
         self.error = None
         threading.Thread(target=self._recv_loop, daemon=True).start()
@@ -426,22 +728,58 @@ class ClientNet:
         def on_msg(msg):
             t = msg.get("t")
             if t == "m":
-                self.maze = msg["maze"]
+                self.arena = Arena(msg["maze"])
             elif t == "s":
-                self.state = msg
+                off = msg["st"] - time.perf_counter()
+                # Früh ankommende Pakete bestimmen den Offset, langsam nachdriften
+                if self.offset is None or off > self.offset:
+                    self.offset = off
+                else:
+                    self.offset += (off - self.offset) * 0.02
+                self.snaps.append(msg)
             elif t == "full":
                 self.error = "Das Spiel ist schon voll."
         read_lines(self.sock, on_msg)
         self.connected = False
 
-    def send_input(self, keys, fires):
+    def send(self, obj):
         try:
-            send_msg(self.sock, {"t": "i", "k": keys, "f": fires})
+            send_msg(self.sock, obj)
         except OSError:
             self.connected = False
 
     def close(self):
         close_sock(self.sock)
+
+
+def lerp_angle(a, b, k):
+    return a + ((b - a + math.pi) % (2 * math.pi) - math.pi) * k
+
+
+def interpolate(snaps, render_t):
+    """Snapshot-ähnliches Dict zum Zeitpunkt render_t (Serverzeit)."""
+    snaps = list(snaps)
+    b = snaps[-1]
+    if render_t >= b["st"] or len(snaps) == 1:
+        return b
+    a = None
+    for i in range(len(snaps) - 1, 0, -1):
+        if snaps[i - 1]["st"] <= render_t:
+            a, b = snaps[i - 1], snaps[i]
+            break
+    if a is None or a["m"] != b["m"]:
+        return b
+    k = (render_t - a["st"]) / max(b["st"] - a["st"], 1e-6)
+    tanks = []
+    for ta, tb in zip(a["tk"], b["tk"]):
+        tanks.append([ta[0] + (tb[0] - ta[0]) * k, ta[1] + (tb[1] - ta[1]) * k,
+                      lerp_angle(ta[2], tb[2], k)] + tb[3:])
+    old = {p[0]: p for p in a["p"]}
+    shots = []
+    for p in b["p"]:
+        q = old.get(p[0])
+        shots.append([p[0], p[1], q[2] + (p[2] - q[2]) * k, q[3] + (p[3] - q[3]) * k] if q else p)
+    return dict(b, tk=tanks, p=shots)
 
 
 # --- Grafik ------------------------------------------------------------------
@@ -457,7 +795,45 @@ def make_tank_sprite(color):
     pygame.draw.rect(s, dark, (22, 19, 20, 6), 1)
     pygame.draw.circle(s, color, (22, 22), 8)
     pygame.draw.circle(s, dark, (22, 22), 8, 2)
-    return s
+    return s.convert_alpha()
+
+
+def draw_icon(surf, kind, cx, cy, k=1.0):
+    """Power-up-Symbol, k = Skalierung."""
+    def p(v):
+        return max(1, round(v * k))
+    if kind == "frag":
+        pygame.draw.circle(surf, SHOT_C, (cx, cy), p(6))
+        for i in range(6):
+            a = i * math.pi / 3
+            pygame.draw.circle(surf, SHOT_C, (cx + math.cos(a) * p(9), cy + math.sin(a) * p(9)), p(1.6))
+    elif kind == "mg":
+        for dx in (-6, 0, 6):
+            pygame.draw.circle(surf, SHOT_C, (cx + p(dx) if dx else cx, cy), p(2.6))
+    elif kind == "laser":
+        pts = [(cx - p(9), cy + p(4)), (cx - p(3), cy - p(4)), (cx + p(3), cy + p(4)),
+               (cx + p(9), cy - p(4))]
+        pygame.draw.lines(surf, (230, 20, 20), False, pts, p(2.5))
+    elif kind == "rocket":
+        pygame.draw.polygon(surf, (235, 120, 20), [(cx + p(9), cy), (cx - p(6), cy - p(6)),
+                                                   (cx - p(2), cy), (cx - p(6), cy + p(6))])
+    elif kind == "shield":
+        pygame.draw.circle(surf, (40, 120, 230), (cx, cy), p(8), p(2.5))
+
+
+def make_box_sprite(kind):
+    s = pygame.Surface((30, 30), pygame.SRCALPHA)
+    pygame.draw.rect(s, (150, 150, 150), (2, 2, 26, 26), border_radius=4)
+    pygame.draw.rect(s, (95, 95, 95), (2, 2, 26, 26), 2, border_radius=4)
+    draw_icon(s, kind, 15, 15, 1.0)
+    return s.convert_alpha()
+
+
+def make_glow():
+    s = pygame.Surface((70, 70), pygame.SRCALPHA)
+    for r in range(35, 0, -3):
+        pygame.draw.circle(s, (140, 80, 210, int(70 * (1 - r / 35)) + 8), (35, 35), r)
+    return s.convert_alpha()
 
 
 class Renderer:
@@ -467,68 +843,132 @@ class Renderer:
         self.big = pygame.font.Font(None, 48)
         self.score_font = pygame.font.Font(None, 64)
         self.small = pygame.font.Font(None, 22)
-        self.sprites = [make_tank_sprite(c) for c in COLORS]
-        self.dead_sprite = make_tank_sprite((90, 90, 90))
-        self.icons = [pygame.transform.rotozoom(s, 0, 1.6) for s in self.sprites]
+        self.sprites = [make_tank_sprite(c) for c in COLORS] + [make_tank_sprite((90, 90, 90))]
+        self.icons = [pygame.transform.rotozoom(s, 0, 1.6) for s in self.sprites[:2]]
+        self.boxes = {k: make_box_sprite(k) for k in POWERUPS}
+        self.glow = make_glow()
+        self.rot_cache = {}
+        self.text_cache = {}
         self.maze_surf = None
         self.maze_surf_id = None
+        self.debug = False
 
     def text(self, txt, pos, font=None, color=TEXT_C, center=True):
-        surf = (font or self.font).render(txt, True, color)
+        font = font or self.font
+        key = (txt, id(font), color)
+        surf = self.text_cache.get(key)
+        if surf is None:
+            if len(self.text_cache) > 300:
+                self.text_cache.clear()
+            surf = self.text_cache[key] = font.render(txt, True, color)
         rect = surf.get_rect(center=pos) if center else surf.get_rect(topleft=pos)
         self.screen.blit(surf, rect)
         return rect
 
-    def _maze_surface(self, maze):
-        if self.maze_surf_id != maze["id"]:
-            surf = pygame.Surface((W, ARENA_TOP + ARENA_H + 10), pygame.SRCALPHA)
-            pygame.draw.rect(surf, FLOOR, (maze["ox"], maze["oy"],
-                                           maze["cols"] * CELL, maze["rows"] * CELL))
-            for w in maze["walls"]:
+    def rotated(self, idx, a):
+        # auf 3° gerundet und gecacht -> rotozoom nur einmal pro Winkel statt jeden Frame
+        step = round(math.degrees(a) / 3) % 120
+        surf = self.rot_cache.get((idx, step))
+        if surf is None:
+            surf = self.rot_cache[(idx, step)] = pygame.transform.rotozoom(
+                self.sprites[idx], -step * 3, 1)
+        return surf
+
+    def _maze_surface(self, arena):
+        if self.maze_surf_id != arena.id:
+            surf = pygame.Surface((W, ARENA_TOP + ARENA_H + 10))
+            surf.fill(BG)
+            pygame.draw.rect(surf, FLOOR, (arena.ox, arena.oy, arena.cols * CELL, arena.rows * CELL))
+            for w in arena.walls:
                 pygame.draw.rect(surf, WALL_C, w)
-            self.maze_surf, self.maze_surf_id = surf, maze["id"]
+            self.maze_surf, self.maze_surf_id = surf.convert(), arena.id
         return self.maze_surf
 
-    def draw(self, maze, snap, me=None, hint=""):
+    def dotted(self, pts, color):
+        carry = 0.0
+        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+            seg = math.hypot(x1 - x0, y1 - y0)
+            d = carry
+            while d < seg:
+                pygame.draw.circle(self.screen, color,
+                                   (x0 + (x1 - x0) * d / seg, y0 + (y1 - y0) * d / seg), 2)
+                d += 10
+            carry = d - seg
+
+    def draw(self, arena, snap, me=None, hint="", info=""):
         scr = self.screen
         scr.fill(BG)
-        if maze:
-            scr.blit(self._maze_surface(maze), (0, 0))
-        if snap and maze and snap["m"] == maze["id"]:
-            for x, y in snap["b"]:
-                pygame.draw.circle(scr, (30, 30, 30), (x, y), BULLET_R)
-            for i, (x, y, a, alive, dead_age) in enumerate(snap["tk"]):
-                sprite = self.sprites[i] if alive else self.dead_sprite
-                rot = pygame.transform.rotozoom(sprite, -math.degrees(a), 1)
+        if arena:
+            scr.blit(self._maze_surface(arena), (0, 0))
+        if snap and arena and snap["m"] == arena.id:
+            pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 250)
+            self.glow.set_alpha(int(140 + 115 * pulse))
+            for x, y, kind in snap["bx"]:
+                scr.blit(self.glow, (x - 35, y - 35))
+                scr.blit(self.boxes[kind], (x - 15, y - 15))
+
+            for _, kind, x, y in snap["p"]:
+                if kind == "frag":
+                    pygame.draw.circle(scr, SHOT_C, (x, y), FRAG_R)
+                    pygame.draw.circle(scr, (120, 120, 120), (x - 2, y - 2), 2)
+                elif kind == "rocket":
+                    pygame.draw.circle(scr, (235, 120, 20), (x, y), ROCKET_R)
+                    pygame.draw.circle(scr, SHOT_C, (x, y), ROCKET_R, 2)
+                else:
+                    pygame.draw.circle(scr, SHOT_C, (x, y), {"b": BULLET_R, "mg": MG_R}.get(kind, 2))
+
+            for i, (x, y, a, alive, dead_age, weapon, shield) in enumerate(snap["tk"]):
+                rot = self.rotated(i if alive else 2, a)
                 scr.blit(rot, rot.get_rect(center=(x, y)))
-                if not alive and dead_age < 0.7:
-                    k = dead_age / 0.7
+                if not alive:
+                    continue
+                if shield > 0 and (shield > 2 or int(shield * 6) % 2):  # blinkt kurz vor Ablauf
+                    pygame.draw.circle(scr, (40, 120, 230), (x, y), TANK_R + 7, 2)
+                if weapon:
+                    draw_icon(scr, weapon, int(x), int(y - 30), 0.8)
+                    if i == me and weapon == "laser":  # Zielhilfe
+                        self.dotted(arena.raycast(x, y, a, 320)[0], (230, 90, 90))
+
+            for kind, age, life, data in snap["fx"]:
+                k = min(age / life, 1)
+                if kind == "laser":
+                    c = (255, int(40 + 200 * k), int(40 + 200 * k))
+                    pygame.draw.lines(scr, c, False, data, max(1, round(4 * (1 - k))))
+                elif kind == "boom":
+                    x, y = data
                     boom = pygame.Surface((160, 160), pygame.SRCALPHA)
                     pygame.draw.circle(boom, (255, 150, 30, int(220 * (1 - k))), (80, 80),
                                        int(12 + 60 * k))
                     pygame.draw.circle(boom, (255, 230, 90, int(255 * (1 - k))), (80, 80),
                                        int(6 + 30 * k))
                     scr.blit(boom, (x - 80, y - 80))
+
             if snap.get("msg"):
-                r = self.text(snap["msg"], (W // 2, ARENA_TOP + ARENA_H // 2), self.big)
-                pad = r.inflate(30, 16)
+                center = (W // 2, ARENA_TOP + ARENA_H // 2)
+                surf = self.big.render(snap["msg"], True, TEXT_C)
+                pad = surf.get_rect(center=center).inflate(30, 16)
                 box = pygame.Surface(pad.size, pygame.SRCALPHA)
                 box.fill((255, 255, 255, 210))
                 scr.blit(box, pad)
-                self.text(snap["msg"], (W // 2, ARENA_TOP + ARENA_H // 2), self.big)
+                self.text(snap["msg"], center, self.big)
         if snap:
-            self._hud(snap["sc"], me)
+            self._hud(snap, me)
         if hint:
             self.text(hint, (W // 2, H - 14), self.small, (140, 140, 140))
+        if self.debug and info:
+            self.text(info, (8, 4), self.small, (200, 0, 120), center=False)
 
-    def _hud(self, scores, me):
+    def _hud(self, snap, me):
         y = ARENA_TOP + ARENA_H + 42
         for i, x in enumerate((W // 2 - 220, W // 2 + 220)):
             icon = self.icons[i]
             self.screen.blit(icon, icon.get_rect(center=(x - 40, y)))
-            self.text(str(scores[i]), (x + 30, y), self.score_font)
+            self.text(str(snap["sc"][i]), (x + 30, y), self.score_font)
             if me == i:
                 self.text("Du", (x + 85, y + 4), self.font, COLORS[i])
+            weapon = snap["tk"][i][5]
+            if weapon and snap["tk"][i][3]:
+                self.text(POWERUP_NAMES[weapon], (x - 40, y - 34), self.small, (110, 110, 110))
 
 
 # --- Eingabe -----------------------------------------------------------------
@@ -538,7 +978,8 @@ class KeyInput:
 
     def __init__(self, up, down, left, right, fire):
         self.map = [(k, UP) for k in up] + [(k, DOWN) for k in down] + \
-                   [(k, LEFT) for k in left] + [(k, RIGHT) for k in right]
+                   [(k, LEFT) for k in left] + [(k, RIGHT) for k in right] + \
+                   [(k, FIRE) for k in fire]
         self.fire_keys = fire
         self.fires = 0
 
@@ -560,10 +1001,10 @@ def net_input():
                     (pygame.K_SPACE, pygame.K_m, pygame.K_q))
 
 
-NET_HINT = "Pfeiltasten/WASD fahren  ·  Leertaste schießen  ·  F11 Vollbild  ·  Esc Menü"
+NET_HINT = "Pfeiltasten/WASD fahren  ·  Leertaste schießen  ·  F3 Ping/FPS  ·  F11 Vollbild  ·  Esc Menü"
 
 
-def common_events(event):
+def common_events(event, rend):
     """True, wenn zurück ins Menü."""
     if event.type == pygame.QUIT:
         pygame.quit()
@@ -571,6 +1012,8 @@ def common_events(event):
     if event.type == pygame.KEYDOWN:
         if event.key == pygame.K_F11:
             pygame.display.toggle_fullscreen()
+        elif event.key == pygame.K_F3:
+            rend.debug = not rend.debug
         elif event.key == pygame.K_ESCAPE:
             return True
     return False
@@ -584,16 +1027,21 @@ def run_local(screen, clock, rend):
     p_green = KeyInput((pygame.K_UP,), (pygame.K_DOWN,), (pygame.K_LEFT,), (pygame.K_RIGHT,),
                        (pygame.K_m,))
     hint = "Rot: ESDF + Q   ·   Grün: Pfeiltasten + M   ·   Esc Menü"
+    acc = 0.0
     while True:
-        dt = min(clock.tick(FPS) / 1000, 0.05)
+        acc = min(acc + clock.tick(FPS) / 1000, 0.25)
         for e in pygame.event.get():
-            if common_events(e):
+            if common_events(e, rend):
                 return
             p_red.handle(e)
             p_green.handle(e)
         pressed = pygame.key.get_pressed()
-        game.update(dt, [p_red.state(pressed), p_green.state(pressed)])
-        rend.draw(game.maze, game.snapshot(), hint=hint)
+        while acc >= TICK:
+            acc -= TICK
+            game.apply_input(0, *p_red.state(pressed), TICK)
+            game.apply_input(1, *p_green.state(pressed), TICK)
+            game.step(TICK)
+        rend.draw(game.arena, game.snapshot(), hint=hint, info=f"{clock.get_fps():.0f} FPS")
         pygame.display.flip()
 
 
@@ -605,11 +1053,12 @@ def run_host(screen, clock, rend, port=PORT):
     ip = local_ip()
     inp = net_input()
     game, gen, sent_maze = None, 0, None
+    acc, ticks, budget, ack = 0.0, 0, 0.0, None
     try:
         while True:
-            dt = min(clock.tick(FPS) / 1000, 0.05)
+            acc = min(acc + clock.tick(FPS) / 1000, 0.25)
             for e in pygame.event.get():
-                if common_events(e):
+                if common_events(e, rend):
                     return
                 inp.handle(e)
 
@@ -627,17 +1076,38 @@ def run_host(screen, clock, rend, port=PORT):
 
             if game is None or gen != net.gen:  # neuer Mitspieler -> neues Spiel
                 game, gen, sent_maze = Game(), net.gen, None
+                acc, budget, ack = 0.0, 0.0, None
 
-            game.update(dt, [inp.state(pygame.key.get_pressed()), net.remote_input])
-            if sent_maze != game.maze_id:
-                net.send({"t": "m", "maze": game.maze})
-                sent_maze = game.maze_id
-            snap = game.snapshot()
-            net.send(snap)
-            rend.draw(game.maze, snap, me=0, hint=NET_HINT)
+            local = inp.state(pygame.key.get_pressed())
+            cmds = net.cmds
+            while acc >= TICK:
+                acc -= TICK
+                ticks += 1
+                game.apply_input(0, *local, TICK)
+                # Client-Inputs im Takt abarbeiten (kleiner Jitter-Puffer), bei Rückstand aufholen
+                budget = max(-0.1, min(budget + TICK, 0.1))
+                while cmds and (cmds[0][3] <= budget + 1e-6 or len(cmds) > 6):
+                    seq, keys, fires, dt = cmds.popleft()
+                    dt = max(0.0, min(float(dt), 0.05))
+                    game.apply_input(1, int(keys), int(fires), dt)
+                    budget -= dt
+                    ack = seq
+                game.step(TICK)
+                if sent_maze != game.maze_id:
+                    net.send({"t": "m", "maze": game.maze})
+                    sent_maze = game.maze_id
+                if ticks % SEND_EVERY == 0:
+                    net.send(game.snapshot(ack))
+            rend.draw(game.arena, game.snapshot(), me=0, hint=NET_HINT,
+                      info=f"{clock.get_fps():.0f} FPS  ·  Host")
             pygame.display.flip()
     finally:
         net.close()
+
+
+class Predicted:
+    def __init__(self, x, y, a):
+        self.x, self.y, self.a = x, y, a
 
 
 def run_client(screen, clock, rend, addr):
@@ -651,20 +1121,55 @@ def run_client(screen, clock, rend, addr):
     except (OSError, ValueError) as e:
         return message(screen, clock, rend, f"Verbindung fehlgeschlagen: {e}")
     inp = net_input()
+    seq, frame = 0, 0
+    pending = deque()   # gesendete, vom Host noch nicht bestätigte Inputs: (seq, keys, dt, t_send)
+    outbox = []
+    ping = None
     try:
         while True:
-            clock.tick(FPS)
+            dt = round(min(clock.tick(FPS) / 1000, 0.05), 4)
             for e in pygame.event.get():
-                if common_events(e):
+                if common_events(e, rend):
                     return
                 inp.handle(e)
             if net.error:
                 return message(screen, clock, rend, net.error)
             if not net.connected:
                 return message(screen, clock, rend, "Verbindung zum Host getrennt.")
-            net.send_input(*inp.state(pygame.key.get_pressed()))
-            rend.draw(net.maze, net.state, me=1, hint=NET_HINT)
-            if net.state is None:
+
+            keys, fires = inp.state(pygame.key.get_pressed())
+            seq += 1
+            frame += 1
+            outbox.append([seq, keys, fires, dt])
+            pending.append((seq, keys, dt, time.perf_counter()))
+            if frame % SEND_EVERY == 0:
+                net.send({"t": "i", "c": outbox})
+                outbox = []
+
+            snap, arena = (net.snaps[-1] if net.snaps else None), net.arena
+            view = None
+            if snap is not None and arena is not None:
+                ack = snap["ack"] or 0
+                while pending and pending[0][0] <= ack:
+                    s = pending.popleft()
+                    if s[0] == ack:
+                        sample = (time.perf_counter() - s[3]) * 1000
+                        ping = sample if ping is None else ping * 0.9 + sample * 0.1
+                while len(pending) > 180:
+                    pending.popleft()
+                view = interpolate(net.snaps, time.perf_counter() + net.offset - INTERP_DELAY)
+                me = snap["tk"][1]
+                # Eigener Panzer: letzter Serverzustand + noch unbestätigte Inputs -> sofortige Reaktion
+                if me[3] and snap["m"] == arena.id:
+                    p = Predicted(me[0], me[1], me[2])
+                    for _, k, d, _ in pending:
+                        move_tank(p, k, d, arena)
+                    view = dict(view, tk=[view["tk"][0], [p.x, p.y, p.a] + me[3:]])
+                else:
+                    view = dict(view, tk=[view["tk"][0], me])
+            info = f"{clock.get_fps():.0f} FPS  ·  Ping {ping:.0f} ms" if ping else ""
+            rend.draw(arena, view, me=1, hint=NET_HINT, info=info)
+            if view is None:
                 rend.text("Warte auf Spielstart …", (W // 2, 300), rend.big)
             pygame.display.flip()
     finally:
@@ -675,7 +1180,7 @@ def message(screen, clock, rend, txt):
     while True:
         clock.tick(30)
         for e in pygame.event.get():
-            common_events(e)
+            common_events(e, rend)
             if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
                 return
         rend.draw(None, None)
