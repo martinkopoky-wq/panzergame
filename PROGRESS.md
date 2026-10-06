@@ -12,7 +12,7 @@
 ## 2026-10-06: Power-ups + Netcode
 **Gemacht:** 5 Power-ups (Splitterbombe mit Zündung beim 2. Druck, MG, abprallender Laser per Raycast, Lenkrakete mit BFS-Pfad durchs Labyrinth, Schild). Netcode umgebaut: feste 60 Ticks/s beim Host, 30 Pakete/s statt 60 in beide Richtungen, Client-Prediction des eigenen Panzers (der Host wendet jedes Client-Kommando mit dessen dt an, daher ist die Vorhersage exakt), Interpolation für den Rest, F3 zeigt FPS/Ping. Performance: Broadphase-Gitter für Wände (Klasse `Arena`), gecachte Rotations-Sprites (3°-Schritte) und Texte, opake Maze-Surface. Getestet: 15 Minuten Fuzz mit allen Waffen, Broadphase gegen volle Wandliste, Prediction == Hostposition über Loopback, Screenshots.
 
-**Offen:** Push nach GitHub (`Grufyeti/panzergame` ist für `martinkopoky-wq` nicht sichtbar), echter Test über zwei PCs, Sound.
+**Offen:** echter Test über zwei PCs, Sound.
 
 **Gelernt:** Die Lags kamen nicht vom Rendern (gemessen: ~1 ms/Frame, ~460 FPS uncapped unter Hyprland/XWayland). Ursache war, dass der Client jeden Snapshot direkt angezeigt hat: Der eigene Panzer reagierte erst nach dem vollen Round-Trip, und Paket-Jitter wurde direkt sichtbar. `SDL_VIDEODRIVER=""` (leer gesetzt) führt zu "windows not available", die Variable dann gar nicht setzen.
 
