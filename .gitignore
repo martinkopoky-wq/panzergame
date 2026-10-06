@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.panzer_last_ip
+build/
+dist/
+*.spec
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# Local tooling (Claude Code settings, graft search config)
+.claude/
+graft/
+.ignore
