@@ -4,14 +4,17 @@
     python panzer.py                    Menü
     python panzer.py host [port]        Spiel hosten (Standard-Port 5555)
     python panzer.py join <ip[:port]>   Einem Spiel beitreten
-    python panzer.py local              2 Spieler an einer Tastatur
+    python panzer.py local [2|3]        2 oder 3 Spieler an einer Tastatur
 
-Netzwerk: Der Host ist autoritativ und simuliert mit festen 60 Ticks/s. Er schickt
-30 Snapshots/s, der Client schickt 30 Pakete/s mit allen Eingaben seit dem letzten Paket.
+Netzwerk: Der Host ist autoritativ und simuliert mit festen 60 Ticks/s. Bis zu 2 Clients
+können beitreten (3 Spieler). Der Host schickt 30 Snapshots/s, jeder Client schickt
+30 Pakete/s mit allen Eingaben seit dem letzten Paket.
 Der Client sagt seinen eigenen Panzer voraus (Prediction + Abgleich über "ack") und zeigt
 den Rest leicht verzögert und interpoliert an, damit unregelmäßig ankommende Pakete nicht ruckeln.
 """
 
+import functools
+import itertools
 import json
 import math
 import random
@@ -27,6 +30,8 @@ import pygame
 # --- Konstanten -------------------------------------------------------------
 
 PORT = 5555
+PROTO = 2  # Protokollversion, Host und Client müssen übereinstimmen
+MAX_PLAYERS = 3
 W, H = 1000, 680
 ARENA_TOP, ARENA_H = 15, 560
 FPS = 60
@@ -66,10 +71,12 @@ MG_AMMO, MG_RATE, MG_SPREAD, MG_R, MG_LIFE = 25, 0.07, 0.12, 3, 4.0
 LASER_LEN, LASER_SHOW = 1400, 0.45
 ROCKET_R, ROCKET_SPEED, ROCKET_TURN, ROCKET_LIFE = 5, 170, 4.0, 10.0
 ROCKET_DELAY, ROCKET_GRACE = 0.4, 0.8
+SMOKE_LIFE = 0.7
 SHIELD_TIME = 8.0
 
-COLORS = [(220, 35, 35), (35, 190, 45)]
-NAMES = ["Rot", "Grün"]
+COLORS = [(220, 35, 35), (35, 190, 45), (45, 95, 225)]
+NAMES = ["Rot", "Grün", "Blau"]
+DEAD_SPRITE = len(COLORS)
 BG = (255, 255, 255)
 FLOOR = (228, 228, 228)
 WALL_C = (77, 77, 77)
@@ -384,7 +391,8 @@ def move_tank(t, keys, dt, arena):
 
 
 class Tank:
-    def __init__(self, x, y, a):
+    def __init__(self, slot, x, y, a):
+        self.slot = slot  # Spieler-Nummer = Farbe, bleibt über Runden gleich
         self.x, self.y, self.a = x, y, a
         self.alive = True
         self.dead_age = 0.0
@@ -439,12 +447,21 @@ class Fx:
 
 
 class Game:
-    def __init__(self):
-        self.scores = [0, 0]
+    def __init__(self, players=(0, 1)):
+        self.players = list(players)
+        self.scores = [0] * MAX_PLAYERS
         self.maze_id = 0
         self.time = 0.0
         self.next_id = 0
-        self.fire_seen = [None, None]
+        self.fire_seen = [None] * MAX_PLAYERS
+        self.new_round()
+
+    def set_players(self, players, fresh=()):
+        """Neue Spielerliste -> sofort neue Runde. Neue Spieler (fresh) starten bei 0 Punkten."""
+        for slot in fresh:
+            self.scores[slot] = 0
+            self.fire_seen[slot] = None  # neuer Client zählt seine Schüsse ab 0
+        self.players = list(players)
         self.new_round()
 
     def new_round(self):
@@ -453,18 +470,26 @@ class Game:
         self.arena = Arena(self.maze)
         m = self.maze
         cells = [(r, c) for r in range(m["rows"]) for c in range(m["cols"])]
+        # Startfelder mit möglichst großem Abstand, wenn es nicht klappt etwas lockerer
         min_dist = (m["rows"] + m["cols"]) // 2
-        for _ in range(200):
-            a, b = random.sample(cells, 2)
-            if abs(a[0] - b[0]) + abs(a[1] - b[1]) >= min_dist:
+        for attempt in range(400):
+            spots = random.sample(cells, len(self.players))
+            need = min_dist - attempt // 100
+            if all(
+                abs(a[0] - b[0]) + abs(a[1] - b[1]) >= need
+                for a, b in itertools.combinations(spots, 2)
+            ):
                 break
         self.tanks = []
-        for i, (r, c) in enumerate((a, b)):
+        for slot, (r, c) in zip(self.players, spots):
             t = Tank(
-                *self.arena.center(r, c), random.choice((0, 0.5, 1, 1.5)) * math.pi
+                slot,
+                *self.arena.center(r, c),
+                random.choice((0, 0.5, 1, 1.5)) * math.pi,
             )
-            t.fire_seen = self.fire_seen[i]
+            t.fire_seen = self.fire_seen[slot]
             self.tanks.append(t)
+        self.by_slot = {t.slot: t for t in self.tanks}
         self.shots = []
         self.boxes = []
         self.fx = []
@@ -475,7 +500,9 @@ class Game:
     # Eingabe eines Spielers. Beim Client-Panzer wird das pro empfangenem Input-Kommando
     # mit dessen dt aufgerufen, damit die Prediction des Clients exakt übereinstimmt.
     def apply_input(self, i, keys, fires, dt):
-        t = self.tanks[i]
+        t = self.by_slot.get(i)
+        if t is None:
+            return
         # Schuss-Zähler: jeder Tastendruck erhöht ihn -> keine verlorenen Taps
         new_shot = t.fire_seen is not None and fires > t.fire_seen
         t.fire_seen = self.fire_seen[i] = fires
@@ -555,15 +582,14 @@ class Game:
         self.fx.append(Fx("boom", [round(bomb.x), round(bomb.y)], 0.5))
 
     def _laser(self, i, t):
-        targets = [j for j, o in enumerate(self.tanks) if o.alive]
-        circles = [(self.tanks[j].x, self.tanks[j].y, TANK_R) for j in targets]
+        targets = [o for o in self.tanks if o.alive]
+        circles = [(o.x, o.y, TANK_R) for o in targets]
         pts, hit = self.arena.raycast(t.x, t.y, t.a, LASER_LEN, circles)
         if hit is not None:
             self._hit(targets[hit])
         self.fx.append(Fx("laser", [[round(x), round(y)] for x, y in pts], LASER_SHOW))
 
-    def _hit(self, j):
-        t = self.tanks[j]
+    def _hit(self, t):
         if t.shield > 0:
             t.shield = 0.0
             return
@@ -572,9 +598,10 @@ class Game:
         self.fx.append(Fx("boom", [round(t.x), round(t.y)], 0.7))
 
     def _rocket_steer(self, s, dt):
-        enemies = [t for j, t in enumerate(self.tanks) if t.alive and j != s.owner]
-        if not enemies and s.age > s.grace and self.tanks[s.owner].alive:
-            enemies = [self.tanks[s.owner]]
+        enemies = [t for t in self.tanks if t.alive and t.slot != s.owner]
+        owner = self.by_slot.get(s.owner)
+        if not enemies and s.age > s.grace and owner and owner.alive:
+            enemies = [owner]
         if not enemies:
             return
         target = min(enemies, key=lambda t: math.hypot(t.x - s.x, t.y - s.y))
@@ -609,8 +636,9 @@ class Game:
             t.shield = max(0.0, t.shield - dt)
 
         # Panzer gegeneinander
-        t1, t2 = self.tanks
-        if t1.alive and t2.alive:
+        for t1, t2 in itertools.combinations(self.tanks, 2):
+            if not (t1.alive and t2.alive):
+                continue
             dx, dy = t2.x - t1.x, t2.y - t1.y
             d = math.hypot(dx, dy)
             if 1e-6 < d < 2 * TANK_R:
@@ -650,16 +678,18 @@ class Game:
                     self._explode(s)
                 else:
                     self.shots.remove(s)
+                    if s.kind == "rocket":  # Treibstoff alle -> kleine Explosion
+                        self.fx.append(Fx("boom", [round(s.x), round(s.y), 0.5], 0.4))
                 continue
             if s.kind == "rocket" and s.age > ROCKET_DELAY:
                 self._rocket_steer(s, dt)
             s.travel(dt, self.arena)
-            for j, t in enumerate(self.tanks):
-                if not t.alive or (j == s.owner and s.age < s.grace):
+            for t in self.tanks:
+                if not t.alive or (t.slot == s.owner and s.age < s.grace):
                     continue
                 if math.hypot(t.x - s.x, t.y - s.y) < TANK_R + s.r - 1:
                     self.shots.remove(s)
-                    self._hit(j)
+                    self._hit(t)
                     break
 
         for f in self.fx[:]:
@@ -668,7 +698,7 @@ class Game:
                 self.fx.remove(f)
 
         # Rundenende
-        alive = [i for i, t in enumerate(self.tanks) if t.alive]
+        alive = [t.slot for t in self.tanks if t.alive]
         if self.end_timer is None and len(alive) <= 1:
             self.end_timer = ROUND_END_DELAY
         if self.end_timer is not None:
@@ -684,30 +714,56 @@ class Game:
                     self.scores[alive[0]] += 1
                 self.new_round()
 
+    def reload_state(self, t):
+        """(verfügbare Schuss, Sekunden bis wieder eine Kugel frei ist)."""
+        if t.weapon == "mg":
+            return t.ammo, 0.0
+        left = [
+            s.life - s.age for s in self.shots if s.owner == t.slot and s.kind == "b"
+        ]
+        free = MAX_BULLETS - len(left)
+        if free > 0:
+            return free, 0.0
+        # alle Kugeln unterwegs -> warten, bis die älteste verschwindet
+        return 0, max(0.0, min(left))
+
     def snapshot(self, ack=None):
         return {
             "t": "s",
             "st": round(self.time, 4),
             "ack": ack,
             "m": self.maze_id,
-            "tk": [
-                [
-                    round(t.x, 1),
-                    round(t.y, 1),
-                    round(t.a, 3),
-                    t.alive,
-                    round(t.dead_age, 2),
-                    t.weapon,
-                    round(t.shield, 1),
-                ]
-                for t in self.tanks
-            ],
-            "p": [[s.id, s.kind, round(s.x, 1), round(s.y, 1)] for s in self.shots],
+            "tk": [self._tank_state(t) for t in self.tanks],
+            "p": [self._shot_state(s) for s in self.shots],
             "bx": [[round(b[0]), round(b[1]), b[2]] for b in self.boxes],
             "fx": [[f.kind, round(f.age, 2), f.life, f.data] for f in self.fx],
             "sc": self.scores,
             "msg": self.msg,
         }
+
+
+    def _tank_state(self, t):
+        # [x, y, a, alive, dead_age, weapon, shield, slot, ammo, reload]
+        ammo, reload = self.reload_state(t)
+        return [
+            round(t.x, 1),
+            round(t.y, 1),
+            round(t.a, 3),
+            t.alive,
+            round(t.dead_age, 2),
+            t.weapon,
+            round(t.shield, 1),
+            t.slot,
+            ammo,
+            round(reload, 2),
+        ]
+
+    @staticmethod
+    def _shot_state(s):
+        p = [s.id, s.kind, round(s.x, 1), round(s.y, 1)]
+        if s.kind == "rocket":  # Rakete braucht Flugrichtung und Besitzer zum Zeichnen
+            p += [round(math.atan2(s.vy, s.vx), 3), s.owner]
+        return p
 
 
 # --- Netzwerk ----------------------------------------------------------------
@@ -752,16 +808,25 @@ def local_ip():
         return "127.0.0.1"
 
 
+class Peer:
+    """Ein verbundener Client beim Host."""
+
+    def __init__(self, conn):
+        self.conn = conn
+        self.cmds = deque()  # Input-Kommandos: [seq, keys, fires, dt]
+        self.budget = 0.0  # Jitter-Puffer für die Input-Abarbeitung
+        self.ack = None  # letzte abgearbeitete seq
+
+
 class HostNet:
     def __init__(self, port):
         self.srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.srv.bind(("", port))
-        self.srv.listen(1)
+        self.srv.listen(MAX_PLAYERS)
         self.lock = threading.Lock()
-        self.conn = None
-        self.gen = 0  # zählt Verbindungen hoch -> Host erkennt neuen Mitspieler
-        self.cmds = deque()  # Input-Kommandos des Clients: [seq, keys, fires, dt]
+        self.peers = {}  # slot (1..MAX_PLAYERS-1) -> Peer
+        self.gen = 0  # zählt bei jedem Join/Leave hoch -> Host passt die Spielerliste an
         threading.Thread(target=self._accept_loop, daemon=True).start()
 
     def _accept_loop(self):
@@ -771,48 +836,60 @@ class HostNet:
             except OSError:
                 return
             with self.lock:
-                if self.conn is not None:
-                    try:
-                        send_msg(conn, {"t": "full"})
-                    except OSError:
-                        pass
-                    conn.close()
-                    continue
-                conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                self.cmds = deque()
-                self.conn = conn
+                free = [s for s in range(1, MAX_PLAYERS) if s not in self.peers]
+            if not free:
+                try:
+                    send_msg(conn, {"t": "full"})
+                except OSError:
+                    pass
+                close_sock(conn)
+                continue
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            peer = Peer(conn)
+            try:
+                send_msg(conn, {"t": "hello", "v": PROTO, "slot": free[0]})
+            except OSError:
+                close_sock(conn)
+                continue
+            with self.lock:
+                self.peers[free[0]] = peer
                 self.gen += 1
-            threading.Thread(target=self._recv_loop, args=(conn,), daemon=True).start()
+            threading.Thread(target=self._recv_loop, args=(peer,), daemon=True).start()
 
-    def _recv_loop(self, conn):
-        cmds = self.cmds
-
+    def _recv_loop(self, peer):
         def on_msg(msg):
             if msg.get("t") == "i":
-                cmds.extend(msg["c"])
+                peer.cmds.extend(msg["c"])
 
-        read_lines(conn, on_msg)
-        self._drop(conn)
+        read_lines(peer.conn, on_msg)
+        self._drop(peer)
 
-    def _drop(self, conn):
+    def _drop(self, peer):
         with self.lock:
-            if self.conn is conn:
-                self.conn = None
-        close_sock(conn)
+            for slot, p in list(self.peers.items()):
+                if p is peer:
+                    del self.peers[slot]
+                    self.gen += 1
+        close_sock(peer.conn)
 
-    def send(self, obj):
-        conn = self.conn
-        if conn is None:
-            return
+    def clients(self):
+        with self.lock:
+            return dict(self.peers)
+
+    def send(self, peer, obj):
         try:
-            send_msg(conn, obj)
+            send_msg(peer.conn, obj)
         except OSError:
-            self._drop(conn)
+            self._drop(peer)
+
+    def broadcast(self, obj):
+        for peer in self.clients().values():
+            self.send(peer, obj)
 
     def close(self):
         close_sock(self.srv)
-        if self.conn:
-            self._drop(self.conn)
+        for peer in self.clients().values():
+            self._drop(peer)
 
 
 class ClientNet:
@@ -821,6 +898,7 @@ class ClientNet:
         self.sock.settimeout(None)
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.arena = None
+        self.slot = None  # eigene Spieler-Nummer, kommt mit "hello"
         self.snaps = deque(maxlen=40)
         self.offset = None  # Serverzeit - lokale Zeit
         self.connected = True
@@ -830,7 +908,15 @@ class ClientNet:
     def _recv_loop(self):
         def on_msg(msg):
             t = msg.get("t")
-            if t == "m":
+            if t == "full":
+                self.error = "Das Spiel ist schon voll (3 Spieler)."
+            elif t == "hello":
+                if msg.get("v") != PROTO:
+                    self.error = "Host hat eine andere Spielversion."
+                self.slot = msg["slot"]
+            elif self.slot is None:  # alter Host ohne Handshake
+                self.error = "Host hat eine andere Spielversion."
+            elif t == "m":
                 self.arena = Arena(msg["maze"])
             elif t == "s":
                 off = msg["st"] - time.perf_counter()
@@ -840,8 +926,6 @@ class ClientNet:
                 else:
                     self.offset += (off - self.offset) * 0.02
                 self.snaps.append(msg)
-            elif t == "full":
-                self.error = "Das Spiel ist schon voll."
 
         read_lines(self.sock, on_msg)
         self.connected = False
@@ -888,9 +972,13 @@ def interpolate(snaps, render_t):
     shots = []
     for p in b["p"]:
         q = old.get(p[0])
-        shots.append(
-            [p[0], p[1], q[2] + (p[2] - q[2]) * k, q[3] + (p[3] - q[3]) * k] if q else p
-        )
+        if not q:
+            shots.append(p)
+            continue
+        s = [p[0], p[1], q[2] + (p[2] - q[2]) * k, q[3] + (p[3] - q[3]) * k]
+        if len(p) > 4:  # Rakete: Winkel und Besitzer
+            s += [lerp_angle(q[4], p[4], k), p[5]]
+        shots.append(s)
     return dict(b, tk=tanks, p=shots)
 
 
@@ -909,6 +997,61 @@ def make_tank_sprite(color):
     pygame.draw.circle(s, color, (22, 22), 8)
     pygame.draw.circle(s, dark, (22, 22), 8, 2)
     return s.convert_alpha()
+
+
+# Rakete in lokalen Koordinaten (Spitze zeigt nach +x), Ursprung = Kollisionskreis
+ROCKET_BODY = [(-10, -4), (7, -4), (7, 4), (-10, 4)]
+ROCKET_NOSE = [(7, -4), (11, -3), (15, 0), (11, 3), (7, 4)]
+ROCKET_FINS = [
+    [(-2, -4), (-8, -4), (-13, -10), (-11, -4)],
+    [(-2, 4), (-8, 4), (-13, 10), (-11, 4)],
+]
+
+
+@functools.cache
+def rocket_sprite(color, step=0, k=1.0):
+    """Raketen-Sprite, 4-fach überabgetastet gezeichnet -> glatte Kanten. step = 3°-Schritte."""
+    if step or k != 1.0:
+        return pygame.transform.rotozoom(rocket_sprite(color), -step * 3, k)
+    ss, w, h = 4, 34, 24
+    big = pygame.Surface((w * ss, h * ss), pygame.SRCALPHA)
+
+    def tf(pts):
+        return [((x + w / 2) * ss, (y + h / 2) * ss) for x, y in pts]
+
+    dark = tuple(int(c * 0.6) for c in color)
+    outline = (55, 55, 60)
+    for fin in ROCKET_FINS:
+        pygame.draw.polygon(big, dark, tf(fin))
+        pygame.draw.polygon(big, outline, tf(fin), ss)
+    pygame.draw.rect(big, outline, (*tf([(-12, -2.5)])[0], 3 * ss, 5 * ss))  # Düse
+    pygame.draw.polygon(big, (210, 212, 220), tf(ROCKET_BODY))
+    pygame.draw.polygon(big, (175, 178, 190), tf([(-10, 1.5), (7, 1.5), (7, 4), (-10, 4)]))
+    pygame.draw.polygon(big, color, tf([(-7, -4), (-5, -4), (-5, 4), (-7, 4)]))  # Ring
+    pygame.draw.polygon(big, color, tf(ROCKET_NOSE))
+    pygame.draw.polygon(big, outline, tf(ROCKET_BODY[:1] + ROCKET_NOSE + ROCKET_BODY[3:]), ss)
+    return pygame.transform.smoothscale(big, (w, h)).convert_alpha()
+
+
+def draw_rocket(surf, x, y, a, color, k=1.0, flame=0.0):
+    """Rakete mit Flamme der Länge flame (0 = aus)."""
+    if flame > 0:
+        ca, sa = math.cos(a) * k, math.sin(a) * k
+
+        def tf(pts):
+            return [(x + px * ca - py * sa, y + px * sa + py * ca) for px, py in pts]
+
+        tail = -12
+        pygame.draw.polygon(
+            surf, (255, 140, 25), tf([(tail, -3), (tail - flame, 0), (tail, 3)])
+        )
+        pygame.draw.polygon(
+            surf,
+            (255, 235, 120),
+            tf([(tail, -1.6), (tail - flame * 0.55, 0), (tail, 1.6)]),
+        )
+    spr = rocket_sprite(tuple(color), round(math.degrees(a) / 3) % 120, k)
+    surf.blit(spr, spr.get_rect(center=(round(x), round(y))))
 
 
 def draw_icon(surf, kind, cx, cy, k=1.0):
@@ -936,16 +1079,7 @@ def draw_icon(surf, kind, cx, cy, k=1.0):
         ]
         pygame.draw.lines(surf, (230, 20, 20), False, pts, p(2.5))
     elif kind == "rocket":
-        pygame.draw.polygon(
-            surf,
-            (235, 120, 20),
-            [
-                (cx + p(9), cy),
-                (cx - p(6), cy - p(6)),
-                (cx - p(2), cy),
-                (cx - p(6), cy + p(6)),
-            ],
-        )
+        draw_rocket(surf, cx + 2 * k, cy - 2 * k, -math.pi / 4, (235, 120, 20), 0.7 * k, 4)
     elif kind == "shield":
         pygame.draw.circle(surf, (40, 120, 230), (cx, cy), p(8), p(2.5))
 
@@ -975,16 +1109,21 @@ class Renderer:
         self.sprites = [make_tank_sprite(c) for c in COLORS] + [
             make_tank_sprite((90, 90, 90))
         ]
-        self.icons = [pygame.transform.rotozoom(s, 0, 1.6) for s in self.sprites[:2]]
+        self.icons = [
+            pygame.transform.rotozoom(s, 0, 1.6) for s in self.sprites[:DEAD_SPRITE]
+        ]
         self.boxes = {k: make_box_sprite(k) for k in POWERUPS}
         self.glow = make_glow()
         self.rot_cache = {}
         self.text_cache = {}
+        self.puffs = {}  # (radius, alpha-stufe) -> Rauchwolke
+        self.trails = {}  # Raketen-id -> [(x, y, zeit), ...]
+        self.trail_maze = None
         self.maze_surf = None
         self.maze_surf_id = None
         self.debug = False
 
-    def text(self, txt, pos, font=None, color=TEXT_C, center=True):
+    def text(self, txt, pos, font=None, color=TEXT_C, center=True, right=False):
         font = font or self.font
         key = (txt, id(font), color)
         surf = self.text_cache.get(key)
@@ -992,7 +1131,12 @@ class Renderer:
             if len(self.text_cache) > 300:
                 self.text_cache.clear()
             surf = self.text_cache[key] = font.render(txt, True, color)
-        rect = surf.get_rect(center=pos) if center else surf.get_rect(topleft=pos)
+        if center:
+            rect = surf.get_rect(center=pos)
+        elif right:
+            rect = surf.get_rect(topright=pos)
+        else:
+            rect = surf.get_rect(topleft=pos)
         self.screen.blit(surf, rect)
         return rect
 
@@ -1017,6 +1161,55 @@ class Renderer:
                 pygame.draw.rect(surf, WALL_C, w)
             self.maze_surf, self.maze_surf_id = surf.convert(), arena.id
         return self.maze_surf
+
+    def puff(self, r, alpha):
+        key = (r, alpha // 16)
+        surf = self.puffs.get(key)
+        if surf is None:
+            surf = pygame.Surface((2 * r + 2, 2 * r + 2), pygame.SRCALPHA)
+            pygame.draw.circle(surf, (150, 150, 150, key[1] * 16), (r + 1, r + 1), r)
+            surf = self.puffs[key] = surf.convert_alpha()
+        return surf
+
+    def smoke(self, arena, shots, now):
+        """Rauchspur hinter Raketen. Läuft rein clientseitig, bleibt kurz nach dem Einschlag stehen."""
+        if self.trail_maze != arena.id:
+            self.trails.clear()
+            self.trail_maze = arena.id
+        for p in shots:
+            if p[1] != "rocket":
+                continue
+            _, _, x, y, a, _ = p
+            tx, ty = x - math.cos(a) * 13, y - math.sin(a) * 13
+            trail = self.trails.setdefault(p[0], [])
+            if not trail or math.hypot(trail[-1][0] - tx, trail[-1][1] - ty) > 3:
+                trail.append((tx, ty, now))
+        for sid in list(self.trails):
+            trail = self.trails[sid] = [q for q in self.trails[sid] if now - q[2] < SMOKE_LIFE]
+            if not trail:
+                del self.trails[sid]
+                continue
+            for x, y, t0 in trail:
+                k = (now - t0) / SMOKE_LIFE
+                r = round(2 + 6 * k)
+                self.screen.blit(self.puff(r, int(170 * (1 - k))), (x - r - 1, y - r - 1))
+
+    def reload_ring(self, x, y, reload, show_time):
+        """Ring, der sich leert, bis wieder eine Kugel frei ist."""
+        frac = min(reload / BULLET_LIFE, 1)
+        rect = pygame.Rect(0, 0, 2 * TANK_R + 20, 2 * TANK_R + 20)
+        rect.center = (round(x), round(y))
+        pygame.draw.circle(self.screen, (200, 200, 200), rect.center, rect.w // 2, 3)
+        pygame.draw.arc(
+            self.screen,
+            (90, 90, 90),
+            rect,
+            math.pi / 2,
+            math.pi / 2 + 2 * math.pi * frac,
+            3,
+        )
+        if show_time:
+            self.text(f"{reload:.1f}", (x, y - TANK_R - 22), self.small, (90, 90, 90))
 
     def dotted(self, pts, color):
         carry = 0.0
@@ -1045,23 +1238,29 @@ class Renderer:
                 scr.blit(self.glow, (x - 35, y - 35))
                 scr.blit(self.boxes[kind], (x - 15, y - 15))
 
-            for _, kind, x, y in snap["p"]:
+            now = pygame.time.get_ticks() / 1000
+            self.smoke(arena, snap["p"], now)
+            for sid, kind, x, y, *extra in snap["p"]:
                 if kind == "frag":
                     pygame.draw.circle(scr, SHOT_C, (x, y), FRAG_R)
                     pygame.draw.circle(scr, (120, 120, 120), (x - 2, y - 2), 2)
                 elif kind == "rocket":
-                    pygame.draw.circle(scr, (235, 120, 20), (x, y), ROCKET_R)
-                    pygame.draw.circle(scr, SHOT_C, (x, y), ROCKET_R, 2)
+                    a, owner = extra
+                    flame = 9 + 4 * math.sin(now * 45 + sid)
+                    draw_rocket(scr, x, y, a, COLORS[owner], 1.0, flame)
                 else:
                     pygame.draw.circle(
                         scr, SHOT_C, (x, y), {"b": BULLET_R, "mg": MG_R}.get(kind, 2)
                     )
 
-            for i, (x, y, a, alive, dead_age, weapon, shield) in enumerate(snap["tk"]):
-                rot = self.rotated(i if alive else 2, a)
+            for x, y, a, alive, dead_age, weapon, shield, i, ammo, reload in snap["tk"]:
+                rot = self.rotated(i if alive else DEAD_SPRITE, a)
                 scr.blit(rot, rot.get_rect(center=(x, y)))
                 if not alive:
                     continue
+                if reload > 0 and not weapon:
+                    # lokal: Sekunden bei allen, im Netz nur beim eigenen Panzer
+                    self.reload_ring(x, y, reload, me is None or i == me)
                 if shield > 0 and (
                     shield > 2 or int(shield * 6) % 2
                 ):  # blinkt kurz vor Ablauf
@@ -1077,19 +1276,20 @@ class Renderer:
                     c = (255, int(40 + 200 * k), int(40 + 200 * k))
                     pygame.draw.lines(scr, c, False, data, max(1, round(4 * (1 - k))))
                 elif kind == "boom":
-                    x, y = data
+                    x, y, *size = data
+                    z = size[0] if size else 1
                     boom = pygame.Surface((160, 160), pygame.SRCALPHA)
                     pygame.draw.circle(
                         boom,
                         (255, 150, 30, int(220 * (1 - k))),
                         (80, 80),
-                        int(12 + 60 * k),
+                        int((12 + 60 * k) * z),
                     )
                     pygame.draw.circle(
                         boom,
                         (255, 230, 90, int(255 * (1 - k))),
                         (80, 80),
-                        int(6 + 30 * k),
+                        int((6 + 30 * k) * z),
                     )
                     scr.blit(boom, (x - 80, y - 80))
 
@@ -1110,17 +1310,39 @@ class Renderer:
 
     def _hud(self, snap, me):
         y = ARENA_TOP + ARENA_H + 42
-        for i, x in enumerate((W // 2 - 220, W // 2 + 220)):
+        n = len(snap["tk"])
+        gap = 440 if n <= 2 else 310
+        for k, tank in enumerate(snap["tk"]):
+            alive, weapon, i, ammo, reload = tank[3], tank[5], tank[7], tank[8], tank[9]
+            x = round(W // 2 + (k - (n - 1) / 2) * gap)
             icon = self.icons[i]
-            self.screen.blit(icon, icon.get_rect(center=(x - 40, y)))
-            self.text(str(snap["sc"][i]), (x + 30, y), self.score_font)
-            if me == i:
-                self.text("Du", (x + 85, y + 4), self.font, COLORS[i])
-            weapon = snap["tk"][i][5]
-            if weapon and snap["tk"][i][3]:
+            self.screen.blit(icon, icon.get_rect(center=(x - 50, y)))
+            self.text(str(snap["sc"][i]), (x + 10, y), self.score_font)
+            if weapon and alive:
                 self.text(
-                    POWERUP_NAMES[weapon], (x - 40, y - 34), self.small, (110, 110, 110)
+                    POWERUP_NAMES[weapon], (x - 50, y - 34), self.small, (110, 110, 110)
                 )
+            # Munition: Kugeln als Punkte (voll = bereit), MG als Zahl, darunter Nachladezeit
+            col = x + 42
+            if weapon == "mg":
+                self.text(f"MG {ammo}", (col, y - 22), self.small, TEXT_C, center=False)
+            else:
+                for b in range(MAX_BULLETS):
+                    c = (col + 4 + b * 11, y - 15)
+                    if b < ammo:
+                        pygame.draw.circle(self.screen, SHOT_C, c, 4)
+                    else:
+                        pygame.draw.circle(self.screen, (170, 170, 170), c, 4, 1)
+            if reload > 0 and alive:
+                self.text(
+                    f"Nachladen {reload:.1f} s",
+                    (col, y - 6),
+                    self.small,
+                    (90, 90, 90),
+                    center=False,
+                )
+            if me == i:
+                self.text("Du", (col, y + 11), self.font, COLORS[i], center=False)
 
 
 # --- Eingabe -----------------------------------------------------------------
@@ -1183,32 +1405,44 @@ def common_events(event, rend):
 # --- Modi --------------------------------------------------------------------
 
 
-def run_local(screen, clock, rend):
-    game = Game()
-    p_red = KeyInput(
-        (pygame.K_e,), (pygame.K_d,), (pygame.K_s,), (pygame.K_f,), (pygame.K_q,)
-    )
-    p_green = KeyInput(
-        (pygame.K_UP,),
-        (pygame.K_DOWN,),
-        (pygame.K_LEFT,),
-        (pygame.K_RIGHT,),
-        (pygame.K_m,),
-    )
-    hint = "Rot: ESDF + Q   ·   Grün: Pfeiltasten + M   ·   Esc Menü"
+def run_local(screen, clock, rend, players=2):
+    game = Game(range(players))
+    inputs = [
+        KeyInput(
+            (pygame.K_e,), (pygame.K_d,), (pygame.K_s,), (pygame.K_f,), (pygame.K_q,)
+        ),
+        KeyInput(
+            (pygame.K_UP,),
+            (pygame.K_DOWN,),
+            (pygame.K_LEFT,),
+            (pygame.K_RIGHT,),
+            (pygame.K_m,),
+        ),
+        KeyInput(
+            (pygame.K_i, pygame.K_KP8),
+            (pygame.K_k, pygame.K_KP5),
+            (pygame.K_j, pygame.K_KP4),
+            (pygame.K_l, pygame.K_KP6),
+            (pygame.K_u, pygame.K_KP0),
+        ),
+    ][:players]
+    hint = "Rot: ESDF + Q  ·  Grün: Pfeile + M"
+    if players == 3:
+        hint += "  ·  Blau: IJKL + U (Numpad 8456 + 0)"
+    hint += "  ·  Esc Menü"
     acc = 0.0
     while True:
         acc = min(acc + clock.tick(FPS) / 1000, 0.25)
         for e in pygame.event.get():
             if common_events(e, rend):
                 return
-            p_red.handle(e)
-            p_green.handle(e)
+            for inp in inputs:
+                inp.handle(e)
         pressed = pygame.key.get_pressed()
         while acc >= TICK:
             acc -= TICK
-            game.apply_input(0, *p_red.state(pressed), TICK)
-            game.apply_input(1, *p_green.state(pressed), TICK)
+            for slot, inp in enumerate(inputs):
+                game.apply_input(slot, *inp.state(pressed), TICK)
             game.step(TICK)
         rend.draw(
             game.arena, game.snapshot(), hint=hint, info=f"{clock.get_fps():.0f} FPS"
@@ -1223,8 +1457,8 @@ def run_host(screen, clock, rend, port=PORT):
         return message(screen, clock, rend, f"Port {port} geht nicht: {e}")
     ip = local_ip()
     inp = net_input()
-    game, gen, sent_maze = None, 0, None
-    acc, ticks, budget, ack = 0.0, 0, 0.0, None
+    game, gen, sent_maze, peers = None, -1, None, {}
+    acc, ticks = 0.0, 0
     try:
         while True:
             acc = min(acc + clock.tick(FPS) / 1000, 0.25)
@@ -1233,13 +1467,25 @@ def run_host(screen, clock, rend, port=PORT):
                     return
                 inp.handle(e)
 
-            if net.conn is None:
-                game = None
+            if gen != net.gen:  # jemand ist beigetreten oder gegangen
+                gen, old = net.gen, peers
+                peers = net.clients()
+                players = [0] + sorted(peers)
+                fresh = [s for s, p in peers.items() if old.get(s) is not p]
+                if not peers:
+                    game = None
+                elif game is None:
+                    game, acc = Game(players), 0.0
+                else:
+                    game.set_players(players, fresh)
+                sent_maze = None
+
+            if game is None:
                 rend.draw(None, None, hint="Esc Menü")
                 rend.text("Warte auf Mitspieler …", (W // 2, 250), rend.big)
                 rend.text(f"Deine IP:  {ip}   Port: {port}", (W // 2, 320))
                 rend.text(
-                    'Dein Freund wählt "Beitreten" und gibt diese IP ein.',
+                    'Bis zu 2 Freunde wählen "Beitreten" und geben diese IP ein.',
                     (W // 2, 360),
                     rend.small,
                     (110, 110, 110),
@@ -1253,30 +1499,30 @@ def run_host(screen, clock, rend, port=PORT):
                 pygame.display.flip()
                 continue
 
-            if game is None or gen != net.gen:  # neuer Mitspieler -> neues Spiel
-                game, gen, sent_maze = Game(), net.gen, None
-                acc, budget, ack = 0.0, 0.0, None
-
             local = inp.state(pygame.key.get_pressed())
-            cmds = net.cmds
             while acc >= TICK:
                 acc -= TICK
                 ticks += 1
                 game.apply_input(0, *local, TICK)
                 # Client-Inputs im Takt abarbeiten (kleiner Jitter-Puffer), bei Rückstand aufholen
-                budget = max(-0.1, min(budget + TICK, 0.1))
-                while cmds and (cmds[0][3] <= budget + 1e-6 or len(cmds) > 6):
-                    seq, keys, fires, dt = cmds.popleft()
-                    dt = max(0.0, min(float(dt), 0.05))
-                    game.apply_input(1, int(keys), int(fires), dt)
-                    budget -= dt
-                    ack = seq
+                for slot, peer in peers.items():
+                    cmds = peer.cmds
+                    peer.budget = max(-0.1, min(peer.budget + TICK, 0.1))
+                    while cmds and (cmds[0][3] <= peer.budget + 1e-6 or len(cmds) > 6):
+                        seq, keys, fires, dt = cmds.popleft()
+                        dt = max(0.0, min(float(dt), 0.05))
+                        game.apply_input(slot, int(keys), int(fires), dt)
+                        peer.budget -= dt
+                        peer.ack = seq
                 game.step(TICK)
                 if sent_maze != game.maze_id:
-                    net.send({"t": "m", "maze": game.maze})
+                    net.broadcast({"t": "m", "maze": game.maze})
                     sent_maze = game.maze_id
                 if ticks % SEND_EVERY == 0:
-                    net.send(game.snapshot(ack))
+                    snap = game.snapshot()
+                    for peer in peers.values():
+                        net.send(peer, dict(snap, ack=peer.ack))
+            free = MAX_PLAYERS - 1 - len(peers)
             rend.draw(
                 game.arena,
                 game.snapshot(),
@@ -1284,6 +1530,15 @@ def run_host(screen, clock, rend, port=PORT):
                 hint=NET_HINT,
                 info=f"{clock.get_fps():.0f} FPS  ·  Host",
             )
+            if free:
+                rend.text(
+                    f"{free} Platz frei  ·  {ip}:{port}",
+                    (W - 8, 3),
+                    rend.small,
+                    (150, 150, 150),
+                    center=False,
+                    right=True,
+                )
             pygame.display.flip()
     finally:
         net.close()
@@ -1346,17 +1601,19 @@ def run_client(screen, clock, rend, addr):
                 view = interpolate(
                     net.snaps, time.perf_counter() + net.offset - INTERP_DELAY
                 )
-                me = snap["tk"][1]
+                me = next((t for t in snap["tk"] if t[7] == net.slot), None)
                 # Eigener Panzer: letzter Serverzustand + noch unbestätigte Inputs -> sofortige Reaktion
-                if me[3] and snap["m"] == arena.id:
+                if me and me[3] and snap["m"] == arena.id:
                     p = Predicted(me[0], me[1], me[2])
                     for _, k, d, _ in pending:
                         move_tank(p, k, d, arena)
-                    view = dict(view, tk=[view["tk"][0], [p.x, p.y, p.a] + me[3:]])
-                else:
-                    view = dict(view, tk=[view["tk"][0], me])
+                    me = [p.x, p.y, p.a] + me[3:]
+                if me:
+                    view = dict(
+                        view, tk=[me if t[7] == net.slot else t for t in view["tk"]]
+                    )
             info = f"{clock.get_fps():.0f} FPS  ·  Ping {ping:.0f} ms" if ping else ""
-            rend.draw(arena, view, me=1, hint=NET_HINT, info=info)
+            rend.draw(arena, view, me=net.slot, hint=NET_HINT, info=info)
             if view is None:
                 rend.text("Warte auf Spielstart …", (W // 2, 300), rend.big)
             pygame.display.flip()
@@ -1378,7 +1635,7 @@ def message(screen, clock, rend, txt):
 
 
 def menu(screen, clock, rend):
-    """Gibt ("host",) / ("join", addr) / ("local",) zurück."""
+    """Gibt ("host",) / ("join", addr) / ("local", spieler) zurück."""
     try:
         ip_text = LAST_IP_FILE.read_text().strip()
     except OSError:
@@ -1386,12 +1643,14 @@ def menu(screen, clock, rend):
     buttons = {
         "host": pygame.Rect(W // 2 - 160, 230, 320, 56),
         "join": pygame.Rect(W // 2 - 160, 390, 320, 56),
-        "local": pygame.Rect(W // 2 - 160, 490, 320, 56),
+        "local2": pygame.Rect(W // 2 - 160, 500, 155, 56),
+        "local3": pygame.Rect(W // 2 + 5, 500, 155, 56),
     }
     labels = {
         "host": "Spiel hosten",
         "join": "Beitreten",
-        "local": "Lokal (1 Tastatur)",
+        "local2": "2 Spieler",
+        "local3": "3 Spieler",
     }
     ip_box = pygame.Rect(W // 2 - 160, 320, 320, 50)
     pygame.key.start_text_input()
@@ -1431,20 +1690,23 @@ def menu(screen, clock, rend):
                         if key == "join":
                             if join():
                                 return join()
+                        elif key.startswith("local"):
+                            return ("local", int(key[-1]))
                         else:
                             return (key,)
 
         screen.fill(BG)
-        rend.text("PANZER", (W // 2, 110), rend.score_font)
+        rend.text("PANZER", (W // 2, 90), rend.score_font)
         for i, spr in enumerate(rend.icons):
-            screen.blit(
-                spr, spr.get_rect(center=(W // 2 + (-170 if i == 0 else 170), 110))
-            )
+            screen.blit(spr, spr.get_rect(center=(W // 2 + (i - 1) * 85, 165)))
         rend.text(
-            "Host spielt Rot, wer beitritt Grün",
+            "Bis zu 3 Spieler: Host spielt Rot, wer beitritt Grün bzw. Blau",
             (W // 2, 302),
             rend.small,
             (130, 130, 130),
+        )
+        rend.text(
+            "Lokal an einer Tastatur", (W // 2, 482), rend.small, (130, 130, 130)
         )
         pygame.draw.rect(screen, (245, 245, 245), ip_box)
         pygame.draw.rect(screen, WALL_C, ip_box, 2)
@@ -1481,7 +1743,8 @@ def main():
     elif args[:1] == ["join"] and len(args) > 1:
         action = ("join", args[1])
     elif args[:1] == ["local"]:
-        action = ("local",)
+        n = int(args[1]) if len(args) > 1 and args[1] in ("2", "3") else 2
+        action = ("local", n)
 
     while True:
         if action is None:
@@ -1492,7 +1755,7 @@ def main():
         elif action[0] == "join":
             run_client(screen, clock, rend, action[1])
         else:
-            run_local(screen, clock, rend)
+            run_local(screen, clock, rend, *action[1:])
         action = None
 
 

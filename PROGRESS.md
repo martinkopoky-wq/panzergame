@@ -17,3 +17,10 @@
 **Gelernt:** Die Lags kamen nicht vom Rendern (gemessen: ~1 ms/Frame, ~460 FPS uncapped unter Hyprland/XWayland). Ursache war, dass der Client jeden Snapshot direkt angezeigt hat: Der eigene Panzer reagierte erst nach dem vollen Round-Trip, und Paket-Jitter wurde direkt sichtbar. `SDL_VIDEODRIVER=""` (leer gesetzt) führt zu "windows not available", die Variable dann gar nicht setzen.
 
 **Als Nächstes:** mit Marcel übers Netz testen und mit F3 den Ping anschauen.
+
+## 2026-10-07: 3 Spieler, Nachlade-Anzeige, echte Rakete
+**Gemacht:** Spieler haben jetzt feste Slots (0 Rot = Host, 1 Grün, 2 Blau). `Game(players)` mit `set_players()`, Tanks tragen `slot`, Schüsse `owner = slot`. Der Host nimmt bis zu 2 Clients an (`Peer` mit eigener Input-Queue, Budget und `ack`). Bei Join/Leave startet sofort eine neue Runde, die Punkte bleiben, neue Spieler starten bei 0. Handshake `hello` mit `slot` und `PROTO`. Lokalmodus für 2 oder 3 Spieler. Snapshot-Tank: `[x, y, a, alive, dead_age, weapon, shield, slot, ammo, reload]`. Nachlade-Anzeige: Ring um den Panzer plus HUD (freie Kugeln als Punkte, „Nachladen x.x s“). Die Rakete ist ein supersampled Sprite (Spitze und Ring in Spielerfarbe, Flossen), dazu flackernde Flamme, clientseitige Rauchspur und eine kleine Explosion, wenn der Treibstoff alle ist. Getestet: 10 min Fuzz mit 3 Spielern und allen Waffen, Loopback mit Host-Prozess und 3 Clients (der dritte wird abgelehnt, Leave/Rejoin, `ack` pro Client), `run_client` gerendert, Screenshots.
+
+**Offen:** echter Test zu dritt übers Netz, Sound.
+
+**Gelernt:** pygame-ce 2.5 hat kein `draw.aapolygon`. Glatte Formen deshalb 4× größer zeichnen, `smoothscale`n und rotiert cachen.
