@@ -1,22 +1,48 @@
 # Panzer
 
-Nachbau von AZ (Tank Trouble) als Desktop-Programm in Python + pygame-ce, mit Multiplayer für bis zu 3 Spieler über IP.
+Nachbau von AZ (Tank Trouble) als Desktop-Programm in Python + pygame-ce, mit Multiplayer für bis zu 8 Spieler über IP.
 
 ## Setup
 
+### Linux / macOS
+
 ```bash
 python -m venv .venv
-.venv/bin/pip install -r requirements.txt      # Windows: .venv\Scripts\pip install -r requirements.txt
+.venv/bin/pip install -r requirements.txt
 .venv/bin/python panzer.py
 ```
 
+### Windows
+
+Voraussetzung: Python 3 von [python.org](https://www.python.org/downloads/), bei der Installation „Add python.exe to PATH“ anhaken.
+
+1. PowerShell im Projektordner öffnen (im Explorer in die Adresszeile `powershell` tippen und Enter drücken).
+2. Diese drei Befehle der Reihe nach ausführen:
+
+   ```powershell
+   py -m venv .venv
+   .venv\Scripts\pip install -r requirements.txt
+   .venv\Scripts\python panzer.py
+   ```
+
+   Der erste legt die virtuelle Umgebung an, der zweite installiert pygame-ce, der dritte startet das Spiel. Die ersten beiden braucht es nur einmal. Danach reicht zum Spielen `.venv\Scripts\python panzer.py`.
+3. Wenn du zum ersten Mal hostest, fragt die Windows-Firewall nach dem Netzwerkzugriff. Bestätigen, sonst kann niemand beitreten.
+
+Probleme:
+
+- **`py` wird nicht gefunden:** Nimm `python -m venv .venv`. Öffnet sich stattdessen der Microsoft Store, ist Python nicht installiert (oder nicht im PATH).
+- **`.venv/bin/pip` wird nicht gefunden:** Das ist der Linux-Pfad. Unter Windows heißt er `.venv\Scripts\pip`.
+- **Fehler mit einem `.venv`-Ordner, der von Linux kopiert wurde:** Den Ordner löschen und mit `py -m venv .venv` neu anlegen. Eine venv läuft nur auf dem System, auf dem sie erstellt wurde.
+- **Aktivieren mit `.venv\Scripts\Activate.ps1` wird blockiert:** Einmal `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` ausführen. Mit den vollen Pfaden wie oben brauchst du das Aktivieren aber gar nicht.
+
 ## Spielen
 
-- **Hosten:** im Menü auf *Spiel hosten* klicken. Deine IP und der Port (5555) werden angezeigt. Der Host spielt Rot. Sobald einer beitritt, geht es los. Tritt ein zweiter bei, startet sofort eine neue Runde zu dritt (Punkte bleiben). Solange ein Platz frei ist, steht oben rechts die IP.
-- **Beitreten:** die IP des Hosts eingeben (optional mit `:port`) und auf *Beitreten* klicken oder Enter drücken. Wer zuerst beitritt, spielt Grün, der Nächste Blau. Ein vierter wird abgelehnt.
-- **Lokal:** 2 oder 3 Spieler an einer Tastatur (Rot: ESDF + Q, Grün: Pfeiltasten + M, Blau: IJKL + U oder Numpad 8/4/5/6 + 0).
+- **Hosten:** im Menü auf *Spiel hosten* klicken. Deine IP und der Port (5555) werden angezeigt. Der Host spielt Rot. Sobald einer beitritt, geht es los. Bei jedem weiteren Beitritt startet sofort eine neue Runde mit allen (Punkte bleiben). Solange ein Platz frei ist, steht oben rechts die IP.
+- **Beitreten:** die IP des Hosts eingeben (optional mit `:port`) und auf *Beitreten* klicken oder Enter drücken. Die Farben werden der Reihe nach vergeben: Grün, Blau, Orange, Lila, Türkis, Pink, Braun. Wer als Neunter kommt, wird abgelehnt.
+- **Lokal:** 2 bis 4 Spieler an einer Tastatur (Rot: ESDF + Q, Grün: Pfeiltasten + M, Blau: IJKL + U, Orange: Numpad 8/4/5/6 + 0).
+- **Große Maps:** Bis 4 Spieler ist das Labyrinth so groß wie immer (6–10 × 4–6 Zellen). Ab 5 Spielern wird es mit jedem Spieler deutlich größer, bei 8 Spielern etwa 20 × 11 Zellen. Damit es trotzdem ins Fenster passt, wird es verkleinert angezeigt. Es gibt dann auch mehr Kisten gleichzeitig. Mit F11 (Vollbild) sieht man mehr Details.
 
-Direktstart: `python panzer.py host [port]`, `python panzer.py join 192.168.1.20[:5555]` oder `python panzer.py local [2|3]`.
+Direktstart: `python panzer.py host [port]`, `python panzer.py join 192.168.1.20[:5555]` oder `python panzer.py local [2|3|4]`.
 
 Steuerung im Netzwerkspiel: Pfeiltasten oder WASD zum Fahren, Leertaste zum Schießen, 1–5 für Sprüche, F2 Ton an/aus, F3 zeigt FPS und Ping, F11 für Vollbild, Esc zurück ins Menü.
 

@@ -4,10 +4,10 @@
     python panzer.py                    Menü
     python panzer.py host [port]        Spiel hosten (Standard-Port 5555)
     python panzer.py join <ip[:port]>   Einem Spiel beitreten
-    python panzer.py local [2|3]        2 oder 3 Spieler an einer Tastatur
+    python panzer.py local [2|3|4]      2 bis 4 Spieler an einer Tastatur
 
-Netzwerk: Der Host ist autoritativ und simuliert mit festen 60 Ticks/s. Bis zu 2 Clients
-können beitreten (3 Spieler). Der Host schickt 30 Snapshots/s, jeder Client schickt
+Netzwerk: Der Host ist autoritativ und simuliert mit festen 60 Ticks/s. Bis zu 7 Clients
+können beitreten (8 Spieler). Ab 5 Spielern wird das Labyrinth größer und verkleinert angezeigt. Der Host schickt 30 Snapshots/s, jeder Client schickt
 30 Pakete/s mit allen Eingaben seit dem letzten Paket.
 Der Client sagt seinen eigenen Panzer voraus (Prediction + Abgleich über "ack") und zeigt
 den Rest leicht verzögert und interpoliert an, damit unregelmäßig ankommende Pakete nicht ruckeln.
@@ -31,10 +31,15 @@ import pygame
 # --- Konstanten -------------------------------------------------------------
 
 PORT = 5555
-PROTO = 3  # Protokollversion, Host und Client müssen übereinstimmen
-MAX_PLAYERS = 3
+PROTO = 4  # Protokollversion, Host und Client müssen übereinstimmen
+MAX_PLAYERS = 8
+MAX_LOCAL = 4  # mehr passen nicht sinnvoll auf eine Tastatur
+BIG_FROM = 5  # ab so vielen Spielern wird das Labyrinth größer
 W, H = 1000, 680
 ARENA_TOP, ARENA_H = 15, 560
+VIEW_H = (
+    ARENA_TOP + ARENA_H + 10
+)  # Höhe des Spielfelds auf dem Bildschirm (darunter HUD)
 FPS = 60
 TICK = 1 / 60
 SEND_EVERY = 1  # Snapshot bzw. Input-Paket nur jeden 2. Tick -> 30 Pakete/s
@@ -61,8 +66,18 @@ BOX_MAX = 3
 BOX_PICK = TANK_R + 12
 # Waffen belegen den Waffenplatz, Effekte wirken sofort beim Aufheben
 WEAPONS = [
-    "frag", "mg", "laser", "rocket", "shotgun", "bouncy",
-    "mine", "swap", "rang", "ice", "hole", "strike",
+    "frag",
+    "mg",
+    "laser",
+    "rocket",
+    "shotgun",
+    "bouncy",
+    "mine",
+    "swap",
+    "rang",
+    "ice",
+    "hole",
+    "strike",
 ]
 BUFFS = ["shield", "turbo", "mini", "ghost", "invis", "confuse"]
 POWERUPS = WEAPONS + BUFFS + ["mystery"]  # die Kartoffel gibt es nur aus der Wundertüte
@@ -101,7 +116,14 @@ SG_PELLETS, SG_SPREAD, SG_LIFE = 7, 0.32, 1.1
 BOUNCY_R, BOUNCY_SPEED, BOUNCY_GAIN, BOUNCY_MAX, BOUNCY_LIFE = 6, 150, 1.15, 560, 7.0
 MINE_R, MINE_ARM, MINE_BLAST = 7, 1.0, 44
 SWAP_R, SWAP_SPEED, SWAP_LIFE = 6, 300, 2.5
-RANG_R, RANG_SPEED, RANG_CURVE, RANG_TURN, RANG_BACK, RANG_LIFE = 6, 250, 2.0, 5.0, 0.8, 5.0
+RANG_R, RANG_SPEED, RANG_CURVE, RANG_TURN, RANG_BACK, RANG_LIFE = (
+    6,
+    250,
+    2.0,
+    5.0,
+    0.8,
+    5.0,
+)
 ICE_R, ICE_SPEED, ICE_LIFE, FREEZE_TIME = 5, 290, 3.0, 3.0
 HOLE_R, HOLE_SPEED, HOLE_TRAVEL, HOLE_TIME = 7, 130, 1.2, 4.5
 HOLE_RANGE, HOLE_PULL, HOLE_KILL, HOLE_SHOT_PULL = 210, 175, 16, 650
@@ -122,12 +144,30 @@ MUTATORS = {
 }
 FOG_R = 165
 
-TAUNTS = ["Hehe!", "Ups …", "GG", "Zu langsam!", "Komm her!"]
+TAUNTS = [
+    "Hehe!",
+    "Ups …",
+    "GG",
+    "Zu langsam!",
+    "Komm her!",
+    "DU DUMMER NEGGER",
+    "JUlIAN SPRING",
+    "SCHEIß JUNKY",
+]
 TAUNT_TIME = 2.5
 FEED_TIME, FEED_MAX = 5.0, 4
 
-COLORS = [(220, 35, 35), (35, 190, 45), (45, 95, 225)]
-NAMES = ["Rot", "Grün", "Blau"]
+COLORS = [
+    (220, 35, 35),
+    (35, 190, 45),
+    (45, 95, 225),
+    (240, 140, 15),
+    (150, 60, 200),
+    (20, 175, 185),
+    (235, 85, 170),
+    (130, 85, 40),
+]
+NAMES = ["Rot", "Grün", "Blau", "Orange", "Lila", "Türkis", "Pink", "Braun"]
 DEAD_SPRITE = len(COLORS)
 BG = (255, 255, 255)
 FLOOR = (228, 228, 228)
@@ -144,8 +184,18 @@ LAST_IP_FILE = Path(__file__).with_name(".panzer_last_ip")
 # --- Labyrinth & Geometrie --------------------------------------------------
 
 
-def generate_maze(maze_id):
-    cols, rows = random.randint(6, 10), random.randint(4, 6)
+def maze_size(players):
+    """Zellen (cols, rows). Bis 4 Spieler wie gehabt, danach pro Spieler deutlich größer."""
+    if players < BIG_FROM:
+        return random.randint(6, 10), random.randint(4, 6)
+    extra = players - BIG_FROM + 1
+    cols = random.randint(11 + 2 * extra, 13 + 2 * extra)
+    rows = max(6, round(cols / 1.75) + random.randint(-1, 0))  # ungefähr Fensterformat
+    return cols, rows
+
+
+def generate_maze(maze_id, players=2):
+    cols, rows = maze_size(players)
     # h[r][c]: Wand oberhalb von Zelle (r, c); v[r][c]: Wand links von Zelle (r, c)
     h = [[True] * cols for _ in range(rows + 1)]
     v = [[True] * (cols + 1) for _ in range(rows)]
@@ -187,8 +237,12 @@ def generate_maze(maze_id):
             if v[r][c] and random.random() < 0.4:
                 v[r][c] = False
 
-    ox = (W - cols * CELL) // 2
-    oy = ARENA_TOP + (ARENA_H - rows * CELL) // 2
+    # Passt das Labyrinth nicht ins Fenster, wird die Welt größer und beim Zeichnen
+    # mit scale verkleinert. ww/wh = Weltgröße mit demselben Seitenverhältnis wie das Spielfeld.
+    scale = min(1.0, W / (cols * CELL + 60), ARENA_H / (rows * CELL + 20))
+    ww, wh = round(W / scale), round(VIEW_H / scale)
+    ox = (ww - cols * CELL) // 2
+    oy = round(ARENA_TOP / scale) + (round(ARENA_H / scale) - rows * CELL) // 2
     half = WALL // 2
     walls = []
     # Zusammenhängende Wandstücke zu einem Rechteck mergen
@@ -232,6 +286,8 @@ def generate_maze(maze_id):
         "rows": rows,
         "ox": ox,
         "oy": oy,
+        "ww": ww,
+        "wh": wh,
         "walls": walls,
     }
 
@@ -324,6 +380,7 @@ class Arena:
         self.id = maze["id"]
         self.cols, self.rows = maze["cols"], maze["rows"]
         self.ox, self.oy = maze["ox"], maze["oy"]
+        self.ww, self.wh = maze.get("ww", W), maze.get("wh", VIEW_H)
         self.walls = [tuple(w) for w in maze["walls"]]
         self.mut = maze.get("mut")  # Sonderregel der Runde (oder None)
         m = self.MARGIN
@@ -454,7 +511,12 @@ def move_tank(t, keys, dt, arena):
     if "frozen" in eff:
         return
     if "confuse" in eff:  # vorne/hinten und links/rechts vertauscht
-        keys = ((keys & UP) << 1) | ((keys & DOWN) >> 1) | ((keys & LEFT) << 1) | ((keys & RIGHT) >> 1)
+        keys = (
+            ((keys & UP) << 1)
+            | ((keys & DOWN) >> 1)
+            | ((keys & LEFT) << 1)
+            | ((keys & RIGHT) >> 1)
+        )
     speed, rot = TANK_SPEED, TANK_ROT
     if "turbo" in eff:
         speed, rot = speed * TURBO_SPEED, rot * 1.25
@@ -617,7 +679,7 @@ class Game:
 
     def new_round(self):
         self.maze_id += 1
-        self.maze = generate_maze(self.maze_id)
+        self.maze = generate_maze(self.maze_id, len(self.players))
         # Sonderregel, nie zweimal dieselbe hintereinander. Steckt im Maze -> der Client kennt sie.
         mut = None
         if random.random() < MUTATOR_CHANCE:
@@ -626,10 +688,14 @@ class Game:
         self.arena = Arena(self.maze)
         m = self.maze
         cells = [(r, c) for r in range(m["rows"]) for c in range(m["cols"])]
-        # Startfelder mit möglichst großem Abstand, wenn es nicht klappt etwas lockerer
-        min_dist = (m["rows"] + m["cols"]) // 2
+        # Startfelder mit möglichst großem Abstand, wenn es nicht klappt etwas lockerer.
+        # Bei vielen Spielern passt der halbe Umfang nicht mehr -> Abstand nach Fläche pro Spieler.
+        n = len(self.players)
+        min_dist = min(
+            (m["rows"] + m["cols"]) // 2, max(2, int(1.6 * math.sqrt(len(cells) / n)))
+        )
         for attempt in range(400):
-            spots = random.sample(cells, len(self.players))
+            spots = random.sample(cells, n)
             need = min_dist - attempt // 100
             if all(
                 abs(a[0] - b[0]) + abs(a[1] - b[1]) >= need
@@ -650,6 +716,7 @@ class Game:
         self.boxes = []
         self.fx = []
         self.box_timer = 1.0 if mut == "kisten" else BOX_FIRST
+        self.box_max = max(BOX_MAX, len(cells) // 30)  # große Labyrinthe: mehr Kisten
         self.end_timer = None
         self.msg = None
 
@@ -674,7 +741,12 @@ class Game:
             return
         if new_shot:
             self._trigger(i, t)
-        if t.weapon == "mg" and keys & FIRE and t.cooldown == 0 and not self._in_wall(t):
+        if (
+            t.weapon == "mg"
+            and keys & FIRE
+            and t.cooldown == 0
+            and not self._in_wall(t)
+        ):
             self._shoot(
                 "mg",
                 i,
@@ -690,7 +762,9 @@ class Game:
 
     def _in_wall(self, t):
         """Ein Geist in der Wand kann nicht schießen (die Kugel würde drin stecken)."""
-        return "ghost" in t.eff and circle_hits_walls(t.x, t.y, 11, self.arena.near(t.x, t.y))
+        return "ghost" in t.eff and circle_hits_walls(
+            t.x, t.y, 11, self.arena.near(t.x, t.y)
+        )
 
     @staticmethod
     def _use_ammo(t):
@@ -771,7 +845,10 @@ class Game:
             self._shoot("bnc", i, t, t.a, BOUNCY_SPEED, BOUNCY_R, BOUNCY_LIFE, 0.3)
         elif w == "mine":  # hinter den Panzer legen, aber nicht durch eine Wand
             back = t.a + math.pi
-            d = min(tank_radius(t.eff) + MINE_R + 3, first_wall(self.arena, t.x, t.y, back, 40) - MINE_R - 1)
+            d = min(
+                tank_radius(t.eff) + MINE_R + 3,
+                first_wall(self.arena, t.x, t.y, back, 40) - MINE_R - 1,
+            )
             x, y = t.x + math.cos(back) * max(d, 0), t.y + math.sin(back) * max(d, 0)
             self._place("mine", i, x, y, MINE_R, 1e9)
         elif w == "swap":
@@ -781,9 +858,13 @@ class Game:
         elif w == "ice":
             self._shoot("ice", i, t, t.a, ICE_SPEED, ICE_R, ICE_LIFE, OWNER_GRACE)
         elif w == "hole":
-            self._shoot("hole", i, t, t.a, HOLE_SPEED, HOLE_R, HOLE_TRAVEL + HOLE_TIME, 1e9)
+            self._shoot(
+                "hole", i, t, t.a, HOLE_SPEED, HOLE_R, HOLE_TRAVEL + HOLE_TIME, 1e9
+            )
         elif w == "strike":
-            self._place("strike", i, *strike_target(self.arena, t.x, t.y, t.a), 0, STRIKE_DELAY)
+            self._place(
+                "strike", i, *strike_target(self.arena, t.x, t.y, t.a), 0, STRIKE_DELAY
+            )
         self._use_ammo(t)
         t.cooldown = 0.35 if w == "mine" else FIRE_COOLDOWN
 
@@ -861,14 +942,18 @@ class Game:
     @staticmethod
     def _turn_toward(s, tx, ty, rate, dt):
         cur = math.atan2(s.vy, s.vx)
-        diff = (math.atan2(ty - s.y, tx - s.x) - cur + math.pi) % (2 * math.pi) - math.pi
+        diff = (math.atan2(ty - s.y, tx - s.x) - cur + math.pi) % (
+            2 * math.pi
+        ) - math.pi
         cur += max(-rate * dt, min(rate * dt, diff))
         s.vx, s.vy = math.cos(cur) * s.speed, math.sin(cur) * s.speed
 
     def _rocket_steer(self, s, dt):
         # Getarnte Panzer sieht die Rakete nicht
         enemies = [
-            t for t in self.tanks if t.alive and t.slot != s.owner and "invis" not in t.eff
+            t
+            for t in self.tanks
+            if t.alive and t.slot != s.owner and "invis" not in t.eff
         ]
         owner = self.by_slot.get(s.owner)
         if not enemies and s.age > s.grace and owner and owner.alive:
@@ -968,7 +1053,11 @@ class Game:
     def _give(self, t, kind, mystery=False):
         """Power-up an Panzer t. False, wenn er es nicht nehmen kann (hat schon eine Waffe)."""
         if kind == "mystery":
-            kind = "potato" if random.random() < POTATO_CHANCE else random.choice(WEAPONS + BUFFS)
+            kind = (
+                "potato"
+                if random.random() < POTATO_CHANCE
+                else random.choice(WEAPONS + BUFFS)
+            )
             mystery = True
         if kind in WEAPONS:
             if t.weapon is not None and not mystery:
@@ -1029,7 +1118,9 @@ class Game:
                 if k in ("ghost", "mini"):  # aus der Wand raus bzw. wieder groß
                     t.x, t.y = self._settle(t, t.x, t.y)
                 elif k == "potato":
-                    self._blast(t.x, t.y, POTATO_BLAST, t.slot, "potato", 0.85, pierce=True)
+                    self._blast(
+                        t.x, t.y, POTATO_BLAST, t.slot, "potato", 0.85, pierce=True
+                    )
 
         # Panzer gegeneinander
         for t1, t2 in itertools.combinations(self.tanks, 2):
@@ -1050,11 +1141,18 @@ class Game:
         self.box_timer -= dt
         if self.box_timer <= 0:
             self.box_timer = random.uniform(*((1.0, 2.0) if rain else BOX_EVERY))
-            if len(self.boxes) < (8 if rain else BOX_MAX) and self.end_timer is None:
+            self.box_timer *= BOX_MAX / self.box_max
+            if (
+                len(self.boxes) < (self.box_max + 5 if rain else self.box_max)
+                and self.end_timer is None
+            ):
                 self._spawn_box()
         for b in self.boxes[:]:
             for t in self.tanks:
-                if not t.alive or math.hypot(t.x - b[0], t.y - b[1]) > tank_radius(t.eff) + 12:
+                if (
+                    not t.alive
+                    or math.hypot(t.x - b[0], t.y - b[1]) > tank_radius(t.eff) + 12
+                ):
                     continue
                 if self._give(t, b[2]):
                     self.boxes.remove(b)
@@ -1235,7 +1333,9 @@ class HostNet:
         self.srv.listen(MAX_PLAYERS)
         self.lock = threading.Lock()
         self.peers = {}  # slot (1..MAX_PLAYERS-1) -> Peer
-        self.gen = 0  # zählt bei jedem Join/Leave hoch -> Host passt die Spielerliste an
+        self.gen = (
+            0  # zählt bei jedem Join/Leave hoch -> Host passt die Spielerliste an
+        )
         threading.Thread(target=self._accept_loop, daemon=True).start()
 
     def _accept_loop(self):
@@ -1318,7 +1418,7 @@ class ClientNet:
         def on_msg(msg):
             t = msg.get("t")
             if t == "full":
-                self.error = "Das Spiel ist schon voll (3 Spieler)."
+                self.error = f"Das Spiel ist schon voll ({MAX_PLAYERS} Spieler)."
             elif t == "hello":
                 if msg.get("v") != PROTO:
                     self.error = "Host hat eine andere Spielversion."
@@ -1437,10 +1537,14 @@ def rocket_sprite(color, step=0, k=1.0):
         pygame.draw.polygon(big, outline, tf(fin), ss)
     pygame.draw.rect(big, outline, (*tf([(-12, -2.5)])[0], 3 * ss, 5 * ss))  # Düse
     pygame.draw.polygon(big, (210, 212, 220), tf(ROCKET_BODY))
-    pygame.draw.polygon(big, (175, 178, 190), tf([(-10, 1.5), (7, 1.5), (7, 4), (-10, 4)]))
+    pygame.draw.polygon(
+        big, (175, 178, 190), tf([(-10, 1.5), (7, 1.5), (7, 4), (-10, 4)])
+    )
     pygame.draw.polygon(big, color, tf([(-7, -4), (-5, -4), (-5, 4), (-7, 4)]))  # Ring
     pygame.draw.polygon(big, color, tf(ROCKET_NOSE))
-    pygame.draw.polygon(big, outline, tf(ROCKET_BODY[:1] + ROCKET_NOSE + ROCKET_BODY[3:]), ss)
+    pygame.draw.polygon(
+        big, outline, tf(ROCKET_BODY[:1] + ROCKET_NOSE + ROCKET_BODY[3:]), ss
+    )
     return pygame.transform.smoothscale(big, (w, h)).convert_alpha()
 
 
@@ -1495,7 +1599,9 @@ def draw_icon(surf, kind, cx, cy, k=1.0):
         ]
         pygame.draw.lines(surf, (230, 20, 20), False, pts, p(2.5))
     elif kind == "rocket":
-        draw_rocket(surf, cx + 2 * k, cy - 2 * k, -math.pi / 4, (235, 120, 20), 0.7 * k, 4)
+        draw_rocket(
+            surf, cx + 2 * k, cy - 2 * k, -math.pi / 4, (235, 120, 20), 0.7 * k, 4
+        )
     elif kind == "shield":
         pygame.draw.circle(surf, (40, 120, 230), (cx, cy), p(8), p(2.5))
     elif kind == "shotgun":
@@ -1509,16 +1615,24 @@ def draw_icon(surf, kind, cx, cy, k=1.0):
     elif kind == "mine":
         for a in (0.8, 2.4, 3.9, 5.5):
             pygame.draw.line(
-                surf, SHOT_C, (cx, cy), (cx + math.cos(a) * p(9), cy + math.sin(a) * p(9)), p(2)
+                surf,
+                SHOT_C,
+                (cx, cy),
+                (cx + math.cos(a) * p(9), cy + math.sin(a) * p(9)),
+                p(2),
             )
         pygame.draw.circle(surf, (60, 60, 60), (cx, cy), p(6))
         pygame.draw.circle(surf, (240, 40, 40), (cx, cy), p(2))
     elif kind == "swap":
         c = (150, 60, 210)
         pygame.draw.line(surf, c, (cx - p(8), cy - p(4)), (cx + p(6), cy - p(4)), p(2))
-        pygame.draw.polygon(surf, c, [(cx + p(9), cy - p(4)), (cx + p(4), cy - p(8)), (cx + p(4), cy)])
+        pygame.draw.polygon(
+            surf, c, [(cx + p(9), cy - p(4)), (cx + p(4), cy - p(8)), (cx + p(4), cy)]
+        )
         pygame.draw.line(surf, c, (cx + p(8), cy + p(4)), (cx - p(6), cy + p(4)), p(2))
-        pygame.draw.polygon(surf, c, [(cx - p(9), cy + p(4)), (cx - p(4), cy), (cx - p(4), cy + p(8))])
+        pygame.draw.polygon(
+            surf, c, [(cx - p(9), cy + p(4)), (cx - p(4), cy), (cx - p(4), cy + p(8))]
+        )
     elif kind == "rang":
         pts = [(cx - p(8), cy + p(5)), (cx, cy - p(6)), (cx + p(8), cy + p(5))]
         pygame.draw.lines(surf, (165, 100, 35), False, pts, p(3.5))
@@ -1526,7 +1640,9 @@ def draw_icon(surf, kind, cx, cy, k=1.0):
         for i in range(3):
             a = i * math.pi / 3
             dx, dy = math.cos(a) * p(8), math.sin(a) * p(8)
-            pygame.draw.line(surf, (60, 160, 235), (cx - dx, cy - dy), (cx + dx, cy + dy), p(2))
+            pygame.draw.line(
+                surf, (60, 160, 235), (cx - dx, cy - dy), (cx + dx, cy + dy), p(2)
+            )
         pygame.draw.circle(surf, (230, 245, 255), (cx, cy), p(2))
     elif kind == "hole":
         pygame.draw.circle(surf, (10, 10, 15), (cx, cy), p(8))
@@ -1539,12 +1655,21 @@ def draw_icon(surf, kind, cx, cy, k=1.0):
         pygame.draw.line(surf, c, (cx, cy - p(10)), (cx, cy + p(10)), p(1.5))
     elif kind == "turbo":
         for dx in (-4, 3):
-            pts = [(cx + p(dx - 3), cy - p(6)), (cx + p(dx + 3), cy), (cx + p(dx - 3), cy + p(6))]
+            pts = [
+                (cx + p(dx - 3), cy - p(6)),
+                (cx + p(dx + 3), cy),
+                (cx + p(dx - 3), cy + p(6)),
+            ]
             pygame.draw.lines(surf, (245, 130, 20), False, pts, p(3))
     elif kind == "mini":  # Pilz
         pygame.draw.rect(surf, (240, 225, 195), (cx - p(3), cy, p(6), p(8)))
         pygame.draw.circle(
-            surf, (215, 40, 40), (cx, cy + p(1)), p(9), draw_top_left=True, draw_top_right=True
+            surf,
+            (215, 40, 40),
+            (cx, cy + p(1)),
+            p(9),
+            draw_top_left=True,
+            draw_top_right=True,
         )
         for dx, dy in ((-4, -4), (3, -5), (5, -1)):
             pygame.draw.circle(surf, (255, 255, 255), (cx + p(dx), cy + p(dy)), p(1.5))
@@ -1553,18 +1678,26 @@ def draw_icon(surf, kind, cx, cy, k=1.0):
         pygame.draw.circle(surf, body, (cx, cy - p(2)), p(7))
         pygame.draw.rect(surf, body, (cx - p(7), cy - p(2), p(14), p(8)))
         for dx in (-5, 0, 5):
-            pygame.draw.circle(surf, body, (cx + (p(dx) if dx else 0), cy + p(6)), p(2.4))
+            pygame.draw.circle(
+                surf, body, (cx + (p(dx) if dx else 0), cy + p(6)), p(2.4)
+            )
         for dx in (-3, 3):
             pygame.draw.circle(surf, SHOT_C, (cx + p(dx), cy - p(2)), p(1.5))
     elif kind == "invis":
         for j in range(10):
             a = j * math.pi / 5
             pygame.draw.circle(
-                surf, (235, 235, 235), (cx + math.cos(a) * p(8), cy + math.sin(a) * p(8)), p(1.6)
+                surf,
+                (235, 235, 235),
+                (cx + math.cos(a) * p(8), cy + math.sin(a) * p(8)),
+                p(1.6),
             )
     elif kind == "confuse":
         pts = [
-            (cx + math.cos(j * 0.5) * (1 + j * 0.3) * k, cy + math.sin(j * 0.5) * (1 + j * 0.3) * k)
+            (
+                cx + math.cos(j * 0.5) * (1 + j * 0.3) * k,
+                cy + math.sin(j * 0.5) * (1 + j * 0.3) * k,
+            )
             for j in range(28)
         ]
         pygame.draw.lines(surf, (250, 215, 40), False, pts, p(2))
@@ -1582,7 +1715,11 @@ def draw_icon(surf, kind, cx, cy, k=1.0):
 
 def make_box_sprite(kind):
     s = pygame.Surface((30, 30), pygame.SRCALPHA)
-    fill, edge = ((215, 180, 60), (150, 115, 25)) if kind == "mystery" else ((150, 150, 150), (95, 95, 95))
+    fill, edge = (
+        ((215, 180, 60), (150, 115, 25))
+        if kind == "mystery"
+        else ((150, 150, 150), (95, 95, 95))
+    )
     pygame.draw.rect(s, fill, (2, 2, 26, 26), border_radius=4)
     pygame.draw.rect(s, edge, (2, 2, 26, 26), 2, border_radius=4)
     draw_icon(s, kind, 15, 15, 1.0)
@@ -1598,10 +1735,18 @@ def make_glow(color=(140, 80, 210), r=35, strength=70):
 
 def make_ice(size):
     s = pygame.Surface((size, size), pygame.SRCALPHA)
-    pygame.draw.rect(s, (170, 220, 250, 150), (0, 0, size, size), border_radius=size // 5)
-    pygame.draw.rect(s, (235, 250, 255, 220), (0, 0, size, size), 2, border_radius=size // 5)
-    pygame.draw.line(s, (255, 255, 255, 200), (size * 0.2, size * 0.35), (size * 0.4, size * 0.15), 3)
-    pygame.draw.line(s, (255, 255, 255, 160), (size * 0.25, size * 0.6), (size * 0.6, size * 0.25), 2)
+    pygame.draw.rect(
+        s, (170, 220, 250, 150), (0, 0, size, size), border_radius=size // 5
+    )
+    pygame.draw.rect(
+        s, (235, 250, 255, 220), (0, 0, size, size), 2, border_radius=size // 5
+    )
+    pygame.draw.line(
+        s, (255, 255, 255, 200), (size * 0.2, size * 0.35), (size * 0.4, size * 0.15), 3
+    )
+    pygame.draw.line(
+        s, (255, 255, 255, 160), (size * 0.25, size * 0.6), (size * 0.6, size * 0.25), 2
+    )
     return s.convert_alpha()
 
 
@@ -1635,9 +1780,18 @@ SOUNDS = {
     "win": (523, 1046, 0.35, "sq", 0.12, 0.0, 2),
 }
 SHOT_SOUNDS = {
-    "b": "shot", "mg": "mg", "sg": "sg", "rocket": "rocket", "frag": "frag",
-    "bnc": "bnc", "rang": "rang", "swap": "tele", "ice": "ice", "hole": "hole",
-    "mine": "mine", "strike": "strike",
+    "b": "shot",
+    "mg": "mg",
+    "sg": "sg",
+    "rocket": "rocket",
+    "frag": "frag",
+    "bnc": "bnc",
+    "rang": "rang",
+    "swap": "tele",
+    "ice": "ice",
+    "hole": "hole",
+    "mine": "mine",
+    "strike": "strike",
 }
 
 
@@ -1719,7 +1873,12 @@ class Renderer:
         self.trails = {}  # Raketen-id -> [(x, y, zeit), ...]
         self.trail_arena = None
         self.maze_surf = None
-        self.maze_arena = None  # Objekt statt id: ein neues Game fängt wieder bei id 1 an
+        self.maze_arena = (
+            None  # Objekt statt id: ein neues Game fängt wieder bei id 1 an
+        )
+        self.world = (
+            None  # Zeichenfläche für große Labyrinthe, wird aufs Spielfeld verkleinert
+        )
         self.debug = False
         self.sfx = Sfx()
         self.round_arena = None  # Labyrinth, für das die Merker unten gelten
@@ -1762,7 +1921,7 @@ class Renderer:
 
     def _maze_surface(self, arena):
         if self.maze_arena is not arena:
-            surf = pygame.Surface((W, ARENA_TOP + ARENA_H + 10))
+            surf = pygame.Surface((arena.ww, arena.wh))
             surf.fill(BG)
             pygame.draw.rect(
                 surf, FLOOR, (arena.ox, arena.oy, arena.cols * CELL, arena.rows * CELL)
@@ -1795,14 +1954,18 @@ class Renderer:
             if not trail or math.hypot(trail[-1][0] - tx, trail[-1][1] - ty) > 3:
                 trail.append((tx, ty, now))
         for sid in list(self.trails):
-            trail = self.trails[sid] = [q for q in self.trails[sid] if now - q[2] < SMOKE_LIFE]
+            trail = self.trails[sid] = [
+                q for q in self.trails[sid] if now - q[2] < SMOKE_LIFE
+            ]
             if not trail:
                 del self.trails[sid]
                 continue
             for x, y, t0 in trail:
                 k = (now - t0) / SMOKE_LIFE
                 r = round(2 + 6 * k)
-                self.screen.blit(self.puff(r, int(170 * (1 - k))), (x - r - 1, y - r - 1))
+                self.screen.blit(
+                    self.puff(r, int(170 * (1 - k))), (x - r - 1, y - r - 1)
+                )
 
     def reload_ring(self, x, y, reload, show_time, life, tr):
         """Ring, der sich leert, bis wieder eine Kugel frei ist."""
@@ -1949,7 +2112,9 @@ class Renderer:
                     pygame.draw.circle(scr, (10, 10, 15), (x, y), HOLE_R)
                     pygame.draw.circle(scr, (150, 70, 220), (x, y), HOLE_R, 2)
                     continue
-                g = min(1, (age - HOLE_TRAVEL) / 0.4, (HOLE_TRAVEL + HOLE_TIME - age) / 0.4)
+                g = min(
+                    1, (age - HOLE_TRAVEL) / 0.4, (HOLE_TRAVEL + HOLE_TIME - age) / 0.4
+                )
                 if g <= 0:
                     continue
                 size = max(2, round(120 * g))
@@ -1969,14 +2134,21 @@ class Renderer:
                 blink = int(age * (4 + 14 * k)) % 2
                 c = (220, 30, 30) if blink else (255, 120, 120)
                 pygame.draw.circle(scr, c, (x, y), STRIKE_BLAST, 1)
-                pygame.draw.circle(scr, c, (x, y), max(4, round(STRIKE_BLAST * (1 - k))), 2)
+                pygame.draw.circle(
+                    scr, c, (x, y), max(4, round(STRIKE_BLAST * (1 - k))), 2
+                )
                 pygame.draw.line(scr, c, (x - 12, y), (x + 12, y), 2)
                 pygame.draw.line(scr, c, (x, y - 12), (x, y + 12), 2)
-                sh = self.puff(max(2, round(3 + 12 * k)), int(60 + 120 * k), (40, 40, 40))
+                sh = self.puff(
+                    max(2, round(3 + 12 * k)), int(60 + 120 * k), (40, 40, 40)
+                )
                 scr.blit(sh, sh.get_rect(center=(x, y)))
             else:
                 pygame.draw.circle(
-                    scr, SHOT_C, (x, y), {"b": bullet_r, "mg": MG_R, "sg": 3}.get(kind, 2)
+                    scr,
+                    SHOT_C,
+                    (x, y),
+                    {"b": bullet_r, "mg": MG_R, "sg": 3}.get(kind, 2),
                 )
 
     def _draw_tank(self, tk, arena, me, leader, now):
@@ -2027,7 +2199,10 @@ class Renderer:
             for j in range(3):
                 b = now * 5 + j * 2.09
                 pygame.draw.circle(
-                    scr, (250, 210, 30), (x + math.cos(b) * 11, y - tr - 10 + math.sin(b) * 3), 3
+                    scr,
+                    (250, 210, 30),
+                    (x + math.cos(b) * 11, y - tr - 10 + math.sin(b) * 3),
+                    3,
                 )
         if i == leader:
             draw_crown(scr, x, y - tr - 4, 0.9)
@@ -2044,7 +2219,9 @@ class Renderer:
             jig = math.sin(now * 40) * 2 if left < 3 else 0
             px, py = x + tr + 10 + jig, y - tr - 6
             draw_icon(scr, "potato", int(px), int(py), 1.0)
-            pygame.draw.circle(scr, (255, 200, 40), (px + 9, py - 6), 2 + int(now * 12) % 2)
+            pygame.draw.circle(
+                scr, (255, 200, 40), (px + 9, py - 6), 2 + int(now * 12) % 2
+            )
             self.text(
                 f"{math.ceil(left)}",
                 (px, py - 15),
@@ -2058,7 +2235,9 @@ class Renderer:
             pygame.draw.rect(scr, (255, 255, 255), box, border_radius=8)
             pygame.draw.rect(scr, COLORS[i], box, 2, border_radius=8)
             pygame.draw.polygon(
-                scr, COLORS[i], [(x - 5, box.bottom), (x + 5, box.bottom), (x, box.bottom + 7)]
+                scr,
+                COLORS[i],
+                [(x - 5, box.bottom), (x + 5, box.bottom), (x, box.bottom + 7)],
             )
             scr.blit(surf, surf.get_rect(center=box.center))
 
@@ -2094,9 +2273,13 @@ class Renderer:
             elif kind == "pick":
                 x, y, item, mystery = data
                 if k < 0.3:
-                    pygame.draw.circle(scr, (140, 80, 210), (x, y), round(12 + 50 * k), 2)
+                    pygame.draw.circle(
+                        scr, (140, 80, 210), (x, y), round(12 + 50 * k), 2
+                    )
                 name = POWERUP_NAMES.get(item, item)
-                surf = self.small.render(("Wundertüte: " if mystery else "") + name + "!", True, TEXT_C)
+                surf = self.small.render(
+                    ("Wundertüte: " if mystery else "") + name + "!", True, TEXT_C
+                )
                 surf.set_alpha(int(255 * min(1, 2.5 * (1 - k))))
                 scr.blit(surf, surf.get_rect(center=(x, y - 32 - 26 * k)))
 
@@ -2108,8 +2291,8 @@ class Renderer:
             if not mine or not mine[3]:
                 return  # tot -> zuschauen ohne Nebel
             centers = [(mine[0], mine[1])]
-        if self.fog is None:
-            self.fog = pygame.Surface((W, ARENA_TOP + ARENA_H + 10), pygame.SRCALPHA)
+        if self.fog is None or self.fog.get_size() != (arena.ww, arena.wh):
+            self.fog = pygame.Surface((arena.ww, arena.wh), pygame.SRCALPHA)
         c = (28, 28, 36)
         self.fog.fill((*c, 255))
         for w in arena.walls:  # Wände schwach sichtbar, Panzer und Kugeln nicht
@@ -2136,7 +2319,7 @@ class Renderer:
             y += 22
 
     def draw(self, arena, snap, me=None, hint="", info=""):
-        scr = self.screen
+        scr = real = self.screen
         now = pygame.time.get_ticks() / 1000
         frame = time.perf_counter()
         self.shake *= math.exp(-12 * (frame - self.last_frame))
@@ -2145,13 +2328,19 @@ class Renderer:
         if arena:
             if arena is not self.round_arena:
                 self._new_round(arena, now)
+            # Großes Labyrinth: alles in Weltkoordinaten auf self.world, danach verkleinern
+            big = (arena.ww, arena.wh) != (W, VIEW_H)
+            if big:
+                if self.world is None or self.world.get_size() != (arena.ww, arena.wh):
+                    self.world = pygame.Surface((arena.ww, arena.wh)).convert()
+                scr = self.screen = self.world
             maze = self._maze_surface(arena)
             if snap and snap["m"] == arena.id:
                 self._stamp_tracks(maze, snap["tk"])
             scr.blit(maze, (0, 0))
         if snap and arena and snap["m"] == arena.id:
             self._events(snap)
-            world = pygame.Rect(0, 0, W, ARENA_TOP + ARENA_H + 10)
+            world = pygame.Rect(0, 0, arena.ww, arena.wh)
             scr.set_clip(world)  # Effekte am Rand nicht ins HUD malen
             pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 250)
             self.glow.set_alpha(int(140 + 115 * pulse))
@@ -2173,13 +2362,21 @@ class Renderer:
                 scr.fill(BG, world)
                 scr.blit(
                     copy,
-                    (random.uniform(-1, 1) * self.shake, random.uniform(-1, 1) * self.shake),
+                    (
+                        random.uniform(-1, 1) * self.shake,
+                        random.uniform(-1, 1) * self.shake,
+                    ),
                 )
             scr.set_clip(None)
-
+        if arena and scr is not real:
+            scr = self.screen = real
+            scr.blit(pygame.transform.smoothscale(self.world, (W, VIEW_H)), (0, 0))
+        if snap and arena and snap["m"] == arena.id:
             if arena.mut:
                 name, desc = MUTATORS[arena.mut]
-                self.text(f"Sonderregel: {name}", (W // 2, 8), self.small, (150, 70, 200))
+                self.text(
+                    f"Sonderregel: {name}", (W // 2, 8), self.small, (150, 70, 200)
+                )
                 if now - self.round_start < 2.5 and not snap.get("msg"):
                     center = (W // 2, ARENA_TOP + ARENA_H // 2)
                     pad = pygame.Rect(0, 0, 520, 96)
@@ -2188,7 +2385,12 @@ class Renderer:
                     box.fill((255, 255, 255, 190))
                     scr.blit(box, pad)
                     pygame.draw.rect(scr, (150, 70, 200), pad, 3, border_radius=6)
-                    self.text(name + "!", (center[0], center[1] - 14), self.big, (150, 70, 200))
+                    self.text(
+                        name + "!",
+                        (center[0], center[1] - 14),
+                        self.big,
+                        (150, 70, 200),
+                    )
                     self.text(desc, (center[0], center[1] + 24), self.font)
 
             if snap.get("msg"):
@@ -2210,9 +2412,11 @@ class Renderer:
     def _hud(self, snap, me, arena):
         y = ARENA_TOP + ARENA_H + 42
         n = len(snap["tk"])
-        gap = 440 if n <= 2 else 310
         most = bullet_params(arena.mut if arena else None)[3]
         leader = self._leader(snap)
+        if n > 4:
+            return self._hud_compact(snap, me, most, leader)
+        gap = {1: 440, 2: 440, 3: 310}.get(n, 235)
         for k, tank in enumerate(snap["tk"]):
             _, _, _, alive, _, weapon, _, i, ammo, reload, eff, _ = tank
             x = round(W // 2 + (k - (n - 1) / 2) * gap)
@@ -2223,8 +2427,10 @@ class Renderer:
             self.text(str(snap["sc"][i]), (x + 10, y), self.score_font)
             if weapon and alive:
                 self.text(
-                    POWERUP_NAMES[weapon], (x - 50, y - 34 - (8 if i == leader else 0)),
-                    self.small, (110, 110, 110),
+                    POWERUP_NAMES[weapon],
+                    (x - 50, y - 34 - (8 if i == leader else 0)),
+                    self.small,
+                    (110, 110, 110),
                 )
             # Munition: Kugeln als Punkte (voll = bereit), Mehrschuss-Waffen als Zahl
             col = x + 42
@@ -2248,8 +2454,55 @@ class Renderer:
             if me == i:
                 self.text("Du", (x - 100, y), self.font, COLORS[i])
             if eff and alive:
-                txt = "  ".join(f"{POWERUP_NAMES.get(e, e)} {math.ceil(v)}s" for e, v in eff.items())
+                txt = "  ".join(
+                    f"{POWERUP_NAMES.get(e, e)} {math.ceil(v)}s" for e, v in eff.items()
+                )
                 self.text(txt, (x - 10, y + 33), self.small, (150, 70, 200))
+
+    def _hud_compact(self, snap, me, most, leader):
+        """Ab 5 Spielern: pro Spieler eine schmale Spalte (Panzer, Punkte, Munition, Waffe)."""
+        y = ARENA_TOP + ARENA_H + 40
+        n = len(snap["tk"])
+        gap = W / n
+        scr = self.screen
+        for k, tank in enumerate(snap["tk"]):
+            _, _, _, alive, _, weapon, _, i, ammo, reload, eff, _ = tank
+            x = round(gap * (k + 0.5))
+            if me == i:
+                pygame.draw.rect(
+                    scr,
+                    COLORS[i],
+                    (x - gap / 2 + 4, y - 36, gap - 8, 76),
+                    2,
+                    border_radius=6,
+                )
+            spr = self.sprites[i if alive else DEAD_SPRITE]
+            scr.blit(spr, spr.get_rect(center=(x - 24, y - 6)))
+            if i == leader:
+                draw_crown(scr, x - 24, y - 26, 0.9)
+            self.text(str(snap["sc"][i]), (x + 18, y - 6), self.big)
+            if weapon and alive:
+                label = f"{POWERUP_NAMES[weapon]}" + (
+                    f" {ammo}×" if weapon in AMMO else ""
+                )
+                self.text(label, (x, y + 22), self.small, (110, 110, 110))
+            elif reload > 0 and alive:
+                self.text(f"{reload:.1f} s", (x, y + 22), self.small, (90, 90, 90))
+            else:
+                for b in range(most):
+                    c = (round(x + (b - (most - 1) / 2) * 10), y + 22)
+                    if b < ammo:
+                        pygame.draw.circle(scr, SHOT_C, c, 3)
+                    else:
+                        pygame.draw.circle(scr, (170, 170, 170), c, 3, 1)
+            if eff and alive:
+                e, v = next(iter(eff.items()))
+                self.text(
+                    f"{POWERUP_NAMES.get(e, e)} {math.ceil(v)}s",
+                    (x, y - 30),
+                    self.small,
+                    (150, 70, 200),
+                )
 
 
 # --- Eingabe -----------------------------------------------------------------
@@ -2334,17 +2587,25 @@ def run_local(screen, clock, rend, players=2):
             (pygame.K_m,),
         ),
         KeyInput(
-            (pygame.K_i, pygame.K_KP8),
-            (pygame.K_k, pygame.K_KP5),
-            (pygame.K_j, pygame.K_KP4),
-            (pygame.K_l, pygame.K_KP6),
-            (pygame.K_u, pygame.K_KP0),
+            (pygame.K_i,), (pygame.K_k,), (pygame.K_j,), (pygame.K_l,), (pygame.K_u,)
+        ),
+        KeyInput(
+            (pygame.K_KP8,),
+            (pygame.K_KP5,),
+            (pygame.K_KP4,),
+            (pygame.K_KP6,),
+            (pygame.K_KP0, pygame.K_KP_ENTER),
         ),
     ][:players]
-    hint = "Rot: ESDF + Q  ·  Grün: Pfeile + M"
-    if players == 3:
-        hint += "  ·  Blau: IJKL + U (Numpad 8456 + 0)"
-    hint += "  ·  F2 Ton  ·  Esc Menü"
+    hint = "  ·  ".join(
+        [
+            "Rot: ESDF + Q",
+            "Grün: Pfeile + M",
+            "Blau: IJKL + U",
+            "Orange: Numpad 8456 + 0",
+        ][:players]
+        + ["F2 Ton", "Esc Menü"]
+    )
     acc = 0.0
     while True:
         acc = min(acc + clock.tick(FPS) / 1000, 0.25)
@@ -2400,7 +2661,7 @@ def run_host(screen, clock, rend, port=PORT):
                 rend.text("Warte auf Mitspieler …", (W // 2, 250), rend.big)
                 rend.text(f"Deine IP:  {ip}   Port: {port}", (W // 2, 320))
                 rend.text(
-                    'Bis zu 2 Freunde wählen "Beitreten" und geben diese IP ein.',
+                    f'Bis zu {MAX_PLAYERS - 1} Freunde wählen "Beitreten" und geben diese IP ein.',
                     (W // 2, 360),
                     rend.small,
                     (110, 110, 110),
@@ -2558,14 +2819,16 @@ def menu(screen, clock, rend):
     buttons = {
         "host": pygame.Rect(W // 2 - 160, 230, 320, 56),
         "join": pygame.Rect(W // 2 - 160, 390, 320, 56),
-        "local2": pygame.Rect(W // 2 - 160, 500, 155, 56),
-        "local3": pygame.Rect(W // 2 + 5, 500, 155, 56),
+        "local2": pygame.Rect(W // 2 - 160, 500, 104, 56),
+        "local3": pygame.Rect(W // 2 - 52, 500, 104, 56),
+        "local4": pygame.Rect(W // 2 + 56, 500, 104, 56),
     }
     labels = {
         "host": "Spiel hosten",
         "join": "Beitreten",
         "local2": "2 Spieler",
         "local3": "3 Spieler",
+        "local4": "4 Spieler",
     }
     ip_box = pygame.Rect(W // 2 - 160, 320, 320, 50)
     pygame.key.start_text_input()
@@ -2613,16 +2876,15 @@ def menu(screen, clock, rend):
         screen.fill(BG)
         rend.text("PANZER", (W // 2, 90), rend.score_font)
         for i, spr in enumerate(rend.icons):
-            screen.blit(spr, spr.get_rect(center=(W // 2 + (i - 1) * 85, 165)))
+            x = W // 2 + (i - (len(rend.icons) - 1) / 2) * 85
+            screen.blit(spr, spr.get_rect(center=(x, 165)))
         rend.text(
-            "Bis zu 3 Spieler: Host spielt Rot, wer beitritt Grün bzw. Blau",
+            f"Bis zu {MAX_PLAYERS} Spieler: Host spielt Rot, ab 5 Spielern wird die Map größer",
             (W // 2, 302),
             rend.small,
             (130, 130, 130),
         )
-        rend.text(
-            "Lokal an einer Tastatur", (W // 2, 482), rend.small, (130, 130, 130)
-        )
+        rend.text("Lokal an einer Tastatur", (W // 2, 482), rend.small, (130, 130, 130))
         pygame.draw.rect(screen, (245, 245, 245), ip_box)
         pygame.draw.rect(screen, WALL_C, ip_box, 2)
         if ip_text:
@@ -2659,7 +2921,8 @@ def main():
     elif args[:1] == ["join"] and len(args) > 1:
         action = ("join", args[1])
     elif args[:1] == ["local"]:
-        n = int(args[1]) if len(args) > 1 and args[1] in ("2", "3") else 2
+        n = int(args[1]) if args[1:2] and args[1].isdigit() else 2
+        n = min(max(n, 2), MAX_LOCAL)
         action = ("local", n)
 
     while True:
