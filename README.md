@@ -1,6 +1,6 @@
 # Panzer
 
-Nachbau von AZ (Tank Trouble) als Desktop-Programm in Python + pygame-ce, mit Multiplayer für bis zu 8 Spieler über IP.
+Nachbau von AZ (Tank Trouble) als Desktop-Programm in Python + pygame-ce, mit Multiplayer für bis zu 8 Spieler über IP, Computergegnern (Bots) und jeder Menge Krawall: Licht, Partikel, Zeitlupe, Ansagen und synthetisierter Musik. Alles steckt in `panzer.py`, es gibt keine Bild- oder Sounddateien.
 
 ## Setup
 
@@ -37,14 +37,16 @@ Probleme:
 
 ## Spielen
 
-- **Hosten:** im Menü auf *Spiel hosten* klicken. Deine IP und der Port (5555) werden angezeigt. Der Host spielt Rot. Sobald einer beitritt, geht es los. Bei jedem weiteren Beitritt startet sofort eine neue Runde mit allen (Punkte bleiben). Solange ein Platz frei ist, steht oben rechts die IP.
+- **Solo:** im Menü auf *Solo* klicken: du gegen Bots (Anzahl mit *Bots dazu* einstellen, mindestens 1). Gesteuert wird wie im Netzwerkspiel.
+- **Bots:** Die Zahl bei *Bots dazu* gilt fürs Hosten und fürs lokale Spiel. Bots fahren mit Wegsuche durchs Labyrinth, suchen Bandenschüsse, weichen Kugeln aus, sammeln Kisten, fliehen vor Atombomben und Luftschlägen und haben jeweils etwas andere Reflexe. Beim Hosten nehmen sie die freien Plätze von oben (Braun, Pink, …). Tritt ein Mensch bei und alles ist voll, macht ein Bot Platz.
+- **Hosten:** im Menü auf *Spiel hosten* klicken. Deine IP und der Port (5555) werden angezeigt. Der Host spielt Rot. Sobald einer beitritt (oder mit Bots sofort), geht es los. Bei jedem weiteren Beitritt startet sofort eine neue Runde mit allen (Punkte bleiben). Solange ein Platz frei ist, steht oben rechts die IP.
 - **Beitreten:** die IP des Hosts eingeben (optional mit `:port`) und auf *Beitreten* klicken oder Enter drücken. Die Farben werden der Reihe nach vergeben: Grün, Blau, Orange, Lila, Türkis, Pink, Braun. Wer als Neunter kommt, wird abgelehnt.
-- **Lokal:** 2 bis 4 Spieler an einer Tastatur (Rot: ESDF + Q, Grün: Pfeiltasten + M, Blau: IJKL + U, Orange: Numpad 8/4/5/6 + 0).
+- **Lokal:** 2 bis 4 Spieler an einer Tastatur (Rot: ESDF + Q, Grün: Pfeiltasten + M, Blau: IJKL + U, Orange: Numpad 8/4/5/6 + 0), auf Wunsch mit Bots dazu.
 - **Große Maps:** Bis 4 Spieler ist das Labyrinth so groß wie immer (6–10 × 4–6 Zellen). Ab 5 Spielern wird es mit jedem Spieler deutlich größer, bei 8 Spielern etwa 20 × 11 Zellen. Damit es trotzdem ins Fenster passt, wird es verkleinert angezeigt. Es gibt dann auch mehr Kisten gleichzeitig. Mit F11 (Vollbild) sieht man mehr Details.
 
-Direktstart: `python panzer.py host [port]`, `python panzer.py join 192.168.1.20[:5555]` oder `python panzer.py local [2|3|4]`.
+Direktstart: `python panzer.py host [port] [bots]`, `python panzer.py join 192.168.1.20[:5555]`, `python panzer.py local [2|3|4] [bots]` oder `python panzer.py solo [bots]`.
 
-Steuerung im Netzwerkspiel: Pfeiltasten oder WASD zum Fahren, Leertaste zum Schießen, 1–5 für Sprüche, F2 Ton an/aus, F3 zeigt FPS und Ping, F11 für Vollbild, Esc zurück ins Menü.
+Steuerung im Netzwerkspiel und solo: Pfeiltasten oder WASD zum Fahren, Leertaste zum Schießen, 1–5 für Sprüche, F2 Ton an/aus, F4 Musik an/aus, F3 zeigt FPS und Ping, F11 für Vollbild, Esc zurück ins Menü.
 
 ## Regeln
 
@@ -71,7 +73,9 @@ Alle 6–11 s erscheint eine Kiste mit lila Schimmer, maximal 3 gleichzeitig. Dr
 | Bumerang | fliegt eine Kurve und kommt zurück. Fängst du ihn, kannst du ihn noch mal werfen. |
 | Eisstrahl | friert den getroffenen Panzer 3 s ein (kein Fahren, kein Schießen). Ein Schild fängt ihn ab. |
 | Schwarzes Loch | fliegt 1,2 s und öffnet sich dann für 4,5 s. Es zieht Panzer und Geschosse an und verschluckt alles in der Mitte, auch durch den Schild und auch dich. Wände schützen. |
-| Luftschlag | markiert einen Punkt bis 280 px voraus (mit Zielhilfe). 1,5 s später schlägt dort eine Bombe ein, die alles im Umkreis trifft. |
+| Luftschlag | markiert einen Punkt bis 280 px voraus (mit Zielhilfe). Ein Jet überfliegt das Ziel, 1,5 s später schlägt dort eine Bombe ein, die alles im Umkreis trifft. |
+| Flammenwerfer | Feuer gedrückt halten: ein Flammenstrahl mit gut 100 px Reichweite, der an Wänden abprallt und Minen zündet. Der Tank reicht gut 2 s (Balken im HUD). Die eigenen Flammen verbrennen dich nicht. |
+| Blitz | trifft sofort den nächsten Panzer vor dir (bis 250 px, mit freier Sicht) und springt von dort auf bis zu zwei weitere über. Ein Schild fängt ihn ab. Ohne Ziel schlägt er in die nächste Wand ein. |
 
 **Effekte**
 
@@ -83,7 +87,7 @@ Alle 6–11 s erscheint eine Kiste mit lila Schimmer, maximal 3 gleichzeitig. Dr
 | Geist | 5 s lang durch Wände fahren. Solange du in einer Wand steckst, kannst du nicht schießen. |
 | Tarnkappe | 8 s lang für die anderen unsichtbar. Lenkraketen finden dich nicht. |
 | Verwirrung | Alle **anderen** haben 6 s lang vertauschte Steuerung (vorne/hinten, links/rechts). |
-| Wundertüte (goldene Kiste) | zufälliges Power-up, ersetzt auch eine Waffe, die du schon hast. Mit 25 % Chance ist es eine **Heiße Kartoffel**: Sie explodiert nach 10 s. Fährst du einen anderen Panzer an, hat er sie (mit mindestens 3 s Restzeit). |
+| Wundertüte (goldene Kiste) | zufälliges Power-up (mit Glücksrad über dem Panzer), ersetzt auch eine Waffe, die du schon hast. Mit 25 % Chance ist es eine **Heiße Kartoffel**: Sie explodiert nach 10 s. Fährst du einen anderen Panzer an, hat er sie (mit mindestens 3 s Restzeit). Mit 15 % Chance ist es eine **Atombombe**: Sie rollt aus und geht nach 4 s (Countdown, Sirene, Warnkreis) mit 230 px Radius hoch, durch Wände und Schilde, reißt Minen und Bomben mit und sprengt die Wände in der Nähe weg. Die Außenwände bleiben. |
 
 ## Sonderregeln
 
@@ -97,19 +101,26 @@ Ungefähr jede dritte Runde bekommt eine Sonderregel, die am Anfang groß angeze
 | Alle auf Turbo | alle Panzer fahren schneller |
 | Nebel | Man sieht nur die Umgebung des eigenen Panzers, von den Wänden nur Umrisse. |
 | Scharfschützen | nur 1 Kugel gleichzeitig, aber pfeilschnell und nach 3,5 s weg |
+| Stromausfall | Alles ist dunkel. Licht gibt es nur von den Scheinwerfern der Panzer, von Kugeln, Feuer, Explosionen und Lasern. |
 
 ## Extras
 
-- **Killfeed** oben rechts: wer wen womit erwischt hat, inklusive Eigentore
-- **Sprüche** im Netzwerkspiel mit den Tasten 1–5 („Hehe!“, „Ups …“, „GG“, „Zu langsam!“, „Komm her!“) als Sprechblase über dem Panzer
-- **Sound**: alle Effekte werden beim Start synthetisiert, es gibt keine Sounddateien. F2 schaltet den Ton aus und an.
+- **Arenen:** Jede Runde hat einen anderen Look (Nachtbasis, Wüste, Vulkan mit glühenden Rissen, Gletscher, Dschungel, Neon-City) mit eigener Umgebung (Staub, Sand, Glut, Schnee, Glühwürmchen, Neon-Pixel). Wände haben Kanten und Schatten.
+- **Licht und Partikel:** Kugeln leuchten in der Farbe des Schützen und ziehen einen Schweif, Mündungsfeuer, Funken beim Abprallen, Explosionen mit Feuerball, Druckwelle, Rauch und Glut, Brandflecken auf dem Boden. Zerstörte Panzer zerfallen in Trümmer, der Turm fliegt davon und das Wrack brennt.
+- **Zeitlupe:** Ist die Runde entschieden, läuft alles außer den Panzern kurz in Zeitlupe, mit Kinobalken und Zoom auf den letzten Abschuss. Auch eine Atombombe bremst die Zeit.
+- **Ansagen:** Erstes Blut, Doppel-/Dreifach-/Megakill, Trickshot (ab 3 Abprallern), Eigentor. Wer mehrere Runden in Folge gewinnt, bekommt das beim Rundensieg angezeigt (Hattrick, Nicht zu stoppen, …), dazu Konfetti.
+- **Killfeed** oben rechts mit Waffensymbol und farbigen Namen: wer wen womit erwischt hat, inklusive Eigentore
+- **Sprüche** im Netzwerkspiel und solo mit den Tasten 1–5 („Hehe!“, „Ups …“, „GG“, „Zu langsam!“, „Komm her!“) als Sprechblase über dem Panzer. Bots sagen auch mal was.
+- **Sound und Musik**: alle Effekte und ein Synthwave-Loop werden beim Start synthetisiert, in Stereo je nach Position. F2 schaltet den Ton aus und an, F4 nur die Musik.
+- **Menü** mit Bots, die im Hintergrund gegeneinander kämpfen
 - **Krone** über dem Panzer und im HUD für den, der alleine vorne liegt
-- **Kettenspuren** auf dem Boden, qualmende Wracks und Wackeln bei Explosionen
+- **Kettenspuren** auf dem Boden, Wackeln bei Explosionen
 
 ## Netzwerk
 
 - Der Host simuliert das Spiel mit festen 60 Ticks/s. Jeder Client bekommt beim Verbinden ein `hello` mit Spieler-Nummer und Protokollversion. Unterschiedliche Spielversionen werden mit einer Meldung abgelehnt. Beide Seiten schicken nur 30 Pakete/s (TCP, JSON-Zeilen). Der Client bündelt dafür seine Eingaben.
 - Der Client sagt seinen eigenen Panzer sofort voraus (Prediction) und gleicht ihn mit der Host-Bestätigung (`ack`) ab. Den Gegner und die Kugeln zeigt er 75 ms verzögert und interpoliert, damit unregelmäßig ankommende Pakete nicht ruckeln.
+- Bots laufen nur beim Host, für die Clients sind sie normale Panzer. Alle Effekte (Licht, Partikel, Trümmer) berechnet jeder Client selbst aus den Snapshots, übers Netz gehen nur die Ereignisse.
 - **Im selben WLAN/LAN** geht das direkt. Eventuell musst du den TCP-Port 5555 in der Firewall des Hosts freigeben (Windows fragt beim ersten Start nach).
 - **Übers Internet:** am einfachsten beide in Tailscale (oder ZeroTier), dann die Tailscale-IP des Hosts verwenden (`tailscale ip -4`). Alternativ Port-Forwarding von TCP 5555 am Router des Hosts.
 
