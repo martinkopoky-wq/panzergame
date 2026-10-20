@@ -56,7 +56,7 @@ Steuerung im Netzwerkspiel und solo: Pfeiltasten oder WASD zum Fahren, Leertaste
 
 ## Power-ups
 
-Alle 6–11 s erscheint eine Kiste mit lila Schimmer, maximal 3 gleichzeitig. Drüberfahren hebt sie auf. Man trägt immer nur eine Waffe; wer schon eine hat, lässt Waffenkisten liegen. Effekte (untere Tabelle) wirken sofort und gehen immer.
+Alle 6–11 s erscheint eine Kiste mit lila Schimmer, maximal 3 gleichzeitig. Drüberfahren hebt sie auf. Man trägt immer nur eine Waffe; wer schon eine hat, lässt Waffenkisten liegen. Effekte (untere Tabelle) wirken sofort und gehen immer. Insgesamt gibt es 59 Power-ups: 38 Waffen, 16 Effekte, die Wundertüte und 4 Sachen, die es nur aus der Wundertüte gibt.
 
 **Waffen**
 
@@ -76,6 +76,30 @@ Alle 6–11 s erscheint eine Kiste mit lila Schimmer, maximal 3 gleichzeitig. Dr
 | Luftschlag | markiert einen Punkt bis 280 px voraus (mit Zielhilfe). Ein Jet überfliegt das Ziel, 1,5 s später schlägt dort eine Bombe ein, die alles im Umkreis trifft. |
 | Flammenwerfer | Feuer gedrückt halten: ein Flammenstrahl mit gut 100 px Reichweite, der an Wänden abprallt und Minen zündet. Der Tank reicht gut 2 s (Balken im HUD). Die eigenen Flammen verbrennen dich nicht. |
 | Blitz | trifft sofort den nächsten Panzer vor dir (bis 250 px, mit freier Sicht) und springt von dort auf bis zu zwei weitere über. Ein Schild fängt ihn ab. Ohne Ziel schlägt er in die nächste Wand ein. |
+| Railgun | Feuer gedrückt halten lädt (knapp 1 s, Ring um den Panzer), loslassen feuert einen Strahl geradeaus, der durch bis zu 2 Wände schlägt und alle Panzer in der Linie trifft. Beim Laden fährt man halb so schnell. |
+| Fernlenkrakete | Der Panzer bleibt stehen, Links/Rechts lenken die Rakete (6 s Treibstoff). An einer Wand oder einem Panzer geht sie hoch, ein zweiter Druck zündet sie sofort. |
+| Geschützturm | stellt einen Turm hinter den Panzer, der 9 s lang auf Gegner mit freier Sicht schießt. Seine Kugeln treffen jeden, auch dich. Ein Treffer zerstört ihn. |
+| Wandbauer | 3 Wandstücke quer hinter den Panzer, die nach 10 s zerfallen. Blocken Kugeln und Wege. |
+| Ölfass | 2 Ölflecken hinter den Panzer: Wer drüberfährt, rutscht (schneller, schwer zu lenken). Feuer oder eine Explosion zündet das Öl, dann brennt es 2,5 s und erwischt jeden darin. |
+| Klebebombe | 2 Schuss. Bleibt an der Wand oder am Panzer kleben und geht 1,5 s später hoch. |
+| Granatwerfer | 3 Granaten, die über Wände fliegen und 240 px voraus explodieren (mit Zielhilfe). |
+| Raketenschwarm | 5 kleine Lenkraketen im Fächer |
+| Sägeblatt | prallt bis zu 7-mal ab und sägt durch jeden Panzer auf dem Weg |
+| Plasmakugel | schmilzt sich durch bis zu 3 Wände (die Wände bleiben weg) und trifft jeden auf dem Weg |
+| Feuerwerk | 2 Raketen, die nach 0,7 s oder an einer Wand in 16 bunte Funken zerplatzen |
+| Druckwelle | 2 Stöße: schiebt Panzer im Kegel vor dir weg und lenkt Geschosse um, die dann dir gehören |
+| Spinnenmine | 2 Spinnen hinter den Panzer. Sobald ein Gegner in die Nähe kommt, krabbeln sie zu ihm und explodieren. |
+| Rammbock | 4 s lang schneller, wer gerammt wird, ist erledigt |
+| Kugelring | 12 Kugeln auf einmal, rundherum |
+| Suchkugel | 3 Schuss, die zum nächsten sichtbaren Panzer lenken, nach 1 s auch zu dir |
+| Phasenkugel | 2 Schuss geradeaus durch alle Wände |
+| Kanonenkugel | dicke Kugel, die durch Schilde und Panzer geht und 2-mal abprallt |
+| Artillerie | 3 Einschläge hintereinander vor dir, Wände egal |
+| Bärenfalle | 2 Fallen hinter den Panzer. Wer reinfährt (auch du), hängt 4 s fest. |
+| Sprungdüse | 3 Sprünge ein Stück nach vorne, auch über Wände |
+| Frostnova | friert alle Panzer im Umkreis von 130 px 3 s ein |
+| Orbitallaser | markiert einen Punkt 240 px voraus, 1,6 s später wandert dort ein Strahl von oben weiter und trifft alles, auch durch Schilde |
+| Prisma | Laserstrahl, der sich an der ersten Wand in drei Strahlen aufspaltet |
 
 **Effekte**
 
@@ -87,7 +111,17 @@ Alle 6–11 s erscheint eine Kiste mit lila Schimmer, maximal 3 gleichzeitig. Dr
 | Geist | 5 s lang durch Wände fahren. Solange du in einer Wand steckst, kannst du nicht schießen. |
 | Tarnkappe | 8 s lang für die anderen unsichtbar. Lenkraketen finden dich nicht. |
 | Verwirrung | Alle **anderen** haben 6 s lang vertauschte Steuerung (vorne/hinten, links/rechts). |
-| Wundertüte (goldene Kiste) | zufälliges Power-up (mit Glücksrad über dem Panzer), ersetzt auch eine Waffe, die du schon hast. Mit 25 % Chance ist es eine **Heiße Kartoffel**: Sie explodiert nach 10 s. Fährst du einen anderen Panzer an, hat er sie (mit mindestens 3 s Restzeit). Mit 15 % Chance ist es eine **Atombombe**: Sie rollt aus und geht nach 4 s (Countdown, Sirene, Warnkreis) mit 230 px Radius hoch, durch Wände und Schilde, reißt Minen und Bomben mit und sprengt die Wände in der Nähe weg. Die Außenwände bleiben. |
+| Spiegelschild | 7 s lang prallen Kugeln an dir ab und fliegen zum Schützen zurück |
+| Superstern | 6 s lang unverwundbar (außer Schwarzes Loch und Atombombe) und schneller, wen du anfährst, ist erledigt |
+| Riesenpilz | 9 s lang anderthalbmal so groß und etwas langsamer, kleinere Panzer werden zertrampelt |
+| Schnellfeuer | 8 s lang doppelt so viele Kugeln und doppelt so schnell nachschießen |
+| Ersatzteil | rettet einmal vor einem Treffer, sogar vor der Atombombe, und hält die ganze Runde |
+| Lähmung | Alle **anderen** fahren 5 s lang nur halb so schnell. |
+| Doppellauf | 10 s lang zwei Kugeln pro Schuss |
+| Teleporter | bringt dich sofort an die Stelle, die am weitesten von allen anderen weg ist |
+| Discokugel | Alle Panzer tauschen reihum die Plätze. |
+| Radar | 12 s lang siehst du getarnte Panzer, Minen, Fallen und Spinnen |
+| Wundertüte (goldene Kiste) | zufälliges Power-up (mit Glücksrad über dem Panzer), ersetzt auch eine Waffe, die du schon hast. Mit 25 % Chance ist es eine **Heiße Kartoffel**: Sie explodiert nach 10 s. Fährst du einen anderen Panzer an, hat er sie (mit mindestens 3 s Restzeit). Mit 15 % Chance ist es eine **Atombombe**: Sie rollt aus und geht nach 4 s (Countdown, Sirene, Warnkreis) mit 230 px Radius hoch, durch Wände und Schilde, reißt Minen und Bomben mit und sprengt die Wände in der Nähe weg. Die Außenwände bleiben. Mit je 8 % Chance gibt es einen **Meteoritenschauer** (9 Einschläge irgendwo im Labyrinth, auch bei dir) oder die **Goldene Kugel** (schnell, geht durch Schilde und durch jeden Panzer auf dem Weg). |
 
 ## Sonderregeln
 
