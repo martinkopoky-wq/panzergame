@@ -52,3 +52,8 @@
 **Offen:** Balancing (viele Items sind ungetestet mit Menschen), Bots nutzen manche Waffen eher zufällig (Wandbauer, Fallen). Echter Netztest mit den neuen Items. Renderzeit bei 8 Spielern im schlimmsten Frame ~170 ms (Nachprüfen, woher).
 
 **Gelernt:** `/teleport` legt ungespeicherte Änderungen per `git stash` weg ("Teleport auto-stash"), danach sieht die Datei wieder aus wie im letzten Commit. Mit `git stash apply` zurückholen. Black zerlegt lange Tabellen in eine Zeile pro Wert, für Tabellen deshalb `# fmt: off`.
+
+## 2026-10-20: Leertaste fährt nicht mehr, kein Rückstoß, Spawn-Schutz
+**Gemacht:** Bug behoben: Mit gedrückter Leertaste fuhr der Panzer vorwärts. Ursache: Die Partikelart `FIRE` (= 1) aus `SPARK, FIRE, … = range(11)` hat das Tasten-Bit `FIRE` (= 16) überschrieben, damit war Schießen-Halten = `UP`. Betraf auch Bots mit MG, Flammenwerfer und Railgun. Das Tasten-Bit heißt jetzt `SHOOT`. Optischer Rückstoß beim Schießen entfernt (`Renderer.kick`). Neu: 2 s Spawn-Schutz (`SPAWN_SAFE`, Effekt `spawn`, blinkender Ring), `_hit` greift dann nicht. PROTO 7, weil sich die Bedeutung der Eingabe-Bits geändert hat. Getestet: 300 Versuche Feuer halten mit verschiedenen Waffen (0 Bewegung), eigener Abpraller direkt nach dem Spawn (37/37 überlebt, nach 2,2 s 0/37), Bot-Matches 2–8 Spieler, Render-Fuzz.
+
+**Gelernt:** Modulweite Konstanten nie doppelt benennen, die spätere Zuweisung gewinnt still. Für Tasten-Bits `SHOOT`, für Partikel `FIRE`.

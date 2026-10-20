@@ -35,7 +35,7 @@ import pygame
 # --- Konstanten -------------------------------------------------------------
 
 PORT = 5555
-PROTO = 6  # Protokollversion, Host und Client müssen übereinstimmen
+PROTO = 7  # Protokollversion, Host und Client müssen übereinstimmen
 MAX_PLAYERS = 8
 MAX_LOCAL = 4  # mehr passen nicht sinnvoll auf eine Tastatur
 BIG_FROM = 5  # ab so vielen Spielern wird das Labyrinth größer
@@ -62,6 +62,7 @@ MAX_BULLETS = 5
 FIRE_COOLDOWN = 0.12
 OWNER_GRACE = 0.1  # so lange kann man sich nicht selbst treffen
 ROUND_END_DELAY = 3.0
+SPAWN_SAFE = 2.0  # so lange ist man nach dem Erscheinen unverwundbar
 
 # Power-ups
 BOX_FIRST = 4.0
@@ -255,7 +256,7 @@ LAID = {  # hinter den Panzer gelegt: (Radius, Lebensdauer)
 ACTIONS = {"laser": "_laser", "zap": "_zap", "push": "_push", "frost": "_frost",
            "prism": "_prism", "jump": "_jump"}  # wirkt sofort: Methode von Game
 # fmt: on
-NO_ICON = ("steer", "slip", "charge")  # Effekte ohne eigenes Symbol im HUD
+NO_ICON = ("steer", "slip", "charge", "spawn")  # Effekte ohne eigenes Symbol im HUD
 TURBO_SPEED, MINI_SCALE, MINI_SPEED = 1.65, 0.55, 1.15
 POTATO_TIME, POTATO_MIN, POTATO_BLAST, POTATO_CHANCE = 10.0, 3.0, 55, 0.25
 # Zeitlupe, sobald die Runde entschieden ist (Panzer fahren normal, alles andere langsam)
@@ -386,7 +387,8 @@ THEMES = [
     },
 ]
 
-UP, DOWN, LEFT, RIGHT, FIRE = 1, 2, 4, 8, 16
+# Tasten-Bits. Nicht FIRE nennen: so heißt auch die Partikelart Feuer (= 1 = UP)
+UP, DOWN, LEFT, RIGHT, SHOOT = 1, 2, 4, 8, 16
 TAUNT_SHIFT = 5  # Bits 5-7 der Tasten: Nummer des Spruchs (1-5), 0 = keiner
 
 LAST_IP_FILE = Path(__file__).with_name(".panzer_last_ip")
@@ -1104,6 +1106,9 @@ class Game:
                 random.choice((0, 0.5, 1, 1.5)) * math.pi,
             )
             t.fire_seen = self.fire_seen[slot]
+            t.eff["spawn"] = (
+                SPAWN_SAFE  # z. B. an der Wand erschienen und sofort geschossen
+            )
             self.tanks.append(t)
         self.by_slot = {t.slot: t for t in self.tanks}
         self.shots = []
@@ -1157,7 +1162,7 @@ class Game:
                 return
             del t.eff["steer"]
         if t.weapon == "rail":  # Feuer halten lädt, loslassen schießt
-            if keys & FIRE and not self._in_wall(t):
+            if keys & SHOOT and not self._in_wall(t):
                 t.charge = min(RAIL_CHARGE, t.charge + dt)
             elif t.charge > 0:
                 if t.charge >= RAIL_CHARGE and not self._in_wall(t):
@@ -1170,7 +1175,7 @@ class Game:
         # Dauerfeuer-Waffen: solange die Taste gedrückt ist
         if (
             t.weapon in ("mg", "flame")
-            and keys & FIRE
+            and keys & SHOOT
             and t.cooldown == 0
             and not self._in_wall(t)
         ):
@@ -1631,7 +1636,7 @@ class Game:
     def _hit(self, t, by=None, how="b", pierce=False, angle=None, bounces=0):
         """Trifft Panzer t. pierce = Schild hilft nicht. True, wenn er zerstört wurde.
         angle = Flugrichtung des Treffers (dorthin fliegen die Trümmer)."""
-        if not t.alive or "_inv" in t.eff:
+        if not t.alive or "_inv" in t.eff or "spawn" in t.eff:
             return False
         if "star" in t.eff and how not in ("hole", "nuke"):
             return False
@@ -2668,7 +2673,7 @@ class Bot:
         keys = self._drive(game, t)
         press, hold = self._fire(game, t, foes)
         if hold:
-            keys |= FIRE
+            keys |= SHOOT
         if press:
             self.fires += 1
         return keys | self._taunt(game) << TAUNT_SHIFT, self.fires
@@ -4617,7 +4622,6 @@ class Renderer:
         self.flash = 0.0  # Aufblitzen des ganzen Bildes
         self.last_frame = time.perf_counter()
         self.hist = {}  # Geschoss-id -> letzte Positionen [(x, y, zeit)]
-        self.kick = {}  # slot -> Zeitpunkt des letzten Schusses (Rückstoß)
         self.after = {}  # slot -> Nachbilder beim Turbo
         self.prev = {}  # slot -> Panzerzustand im letzten Bild
         self.flying = (
@@ -4769,7 +4773,6 @@ class Renderer:
             elif kind == "laser":
                 slot, pts = data
                 self._sound("laser", pts[0][0])
-                self.kick[slot] = now
                 for x, y in pts[1:-1]:
                     self.parts.add(FLASH, x, y, life=0.25, size=22, color=COLORS[slot])
                 ex, ey = pts[-1]
@@ -4777,7 +4780,6 @@ class Renderer:
             elif kind == "zap":
                 slot, pts = data
                 self._sound("zap", pts[0][0])
-                self.kick[slot] = now
                 for x, y in pts[1:]:
                     self.parts.burst(SPARK, x, y, 12, 320, 0.35, 2, drag=3)
                     self.parts.add(
@@ -4834,7 +4836,7 @@ class Renderer:
             self.scores_seen[i] = s
 
     def _muzzle(self, tk, kind, now):
-        """Mündungsfeuer, Funken, Qualm und Rückstoß beim Schießen."""
+        """Mündungsfeuer, Funken und Qualm beim Schießen."""
         x, y, a, eff = tk[0], tk[1], tk[2], tk[10]
         k = tank_scale(eff)
         mx, my = x + math.cos(a) * MUZZLE * k, y + math.sin(a) * MUZZLE * k
@@ -4847,7 +4849,6 @@ class Renderer:
         big = kind in ("rocket", "nuke", "hole", "frag", "sg", "cannon", "rc", "plasma")
         if kind == "cannon":
             self._shake(0.25, x, y)
-        self.kick[tk[7]] = now
         P.add(FLASH, mx, my, life=0.09, size=30 if big else 20, color=(255, 214, 150))
         P.burst(
             SPARK, mx, my, 5 if big else 3, 280, 0.18, 2, drag=6, angle=a, spread=0.45
@@ -5957,10 +5958,6 @@ class Renderer:
             return
         k = tank_scale(eff)
         tr = TANK_R * k
-        kick = self.kick.get(i)
-        if kick is not None and 0 <= now - kick < 0.14:
-            off = 3.5 * (1 - (now - kick) / 0.14)
-            x, y = x - math.cos(a) * off, y - math.sin(a) * off
         spawn = now - self.round_start
         if spawn < 0.9:  # Lichtsäule beim Erscheinen
             f = 1 - spawn / 0.9
@@ -6010,6 +6007,10 @@ class Renderer:
                 )
         if "ghost" in eff:
             self._light((180, 190, 255), x, y, 30, 2)
+        if "spawn" in eff and (eff["spawn"] > 0.6 or int(now * 10) % 2):  # Spawn-Schutz
+            c = mix(COLORS[i], (255, 255, 255), 0.5)
+            self.rings.append((c, (x, y), tr + 7 + 1.5 * math.sin(now * 12), 2))
+            self._light(c, x, y, tr + 18, 3)
         if "mirror" in eff:  # Spiegelschild: silbernes Sechseck, das sich dreht
             pts = [
                 (
@@ -6306,7 +6307,6 @@ class Renderer:
         if kind == "rail":
             slot, p0, p1, holes = data
             self._sound("rail", p0[0])
-            self.kick[slot] = now
             self._shake(0.3, *p0)
             self.flash = max(self.flash, 0.12)
             for x, y in holes + [p1]:
@@ -6316,7 +6316,6 @@ class Renderer:
         elif kind == "prism":
             slot, beams = data
             self._sound("laser", beams[0][0][0])
-            self.kick[slot] = now
             for j, b in enumerate(beams):
                 ex, ey = b[-1]
                 c = PRISM_COLORS[j % len(PRISM_COLORS)]
@@ -6325,7 +6324,6 @@ class Renderer:
         elif kind == "push":
             slot, x, y, a = data
             self._sound("push", x)
-            self.kick[slot] = now
             P.burst(
                 DUST,
                 x,
@@ -7147,7 +7145,7 @@ class KeyInput:
             + [(k, DOWN) for k in down]
             + [(k, LEFT) for k in left]
             + [(k, RIGHT) for k in right]
-            + [(k, FIRE) for k in fire]
+            + [(k, SHOOT) for k in fire]
         )
         self.fire_keys = fire
         self.fires = 0

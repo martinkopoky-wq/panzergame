@@ -52,6 +52,7 @@ Steuerung im Netzwerkspiel und solo: Pfeiltasten oder WASD zum Fahren, Leertaste
 
 - Kugeln prallen an Wänden ab und verschwinden nach 10 s. Jeder Panzer hat maximal 5 Kugeln gleichzeitig im Spiel (außer bei der Sonderregel Scharfschützen). Sind alle 5 unterwegs, lädt man nach: Ein Ring um den Panzer und das HUD zeigen, wie viele Sekunden es noch dauert, bis die älteste Kugel verschwindet und wieder eine frei ist. Die Punkte neben dem Spielstand zeigen die freien Kugeln.
 - Eigene Kugeln können dich selbst treffen.
+- Nach dem Erscheinen ist man 2 s unverwundbar (blinkender Ring), damit man nicht an der eigenen Kugel stirbt, wenn man an einer Wand erscheint und gleich schießt.
 - Ist nur noch ein Panzer übrig, endet die Runde nach 3 s und der Überlebende bekommt einen Punkt. Danach gibt es ein neues, zufälliges Labyrinth.
 
 ## Power-ups
