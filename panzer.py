@@ -282,7 +282,6 @@ TAUNTS = [
     "GG",
     "Zu langsam!",
     "Komm her!",
-    "DU DUMMER NEGGER",
     "JUlIAN SPRING",
     "SCHEIß JUNKY",
 ]
