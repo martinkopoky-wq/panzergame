@@ -15,3 +15,7 @@ graft/
 
 # Rust-Builds
 /target/
+
+# Nix-Builds
+/result
+/result-*

@@ -60,6 +60,32 @@ cargo test --release
 
 Bot-Matches mit 2–8 Spielern und ständig zufälligen Power-ups, verlustfreie Delta-Snapshots, und ein echter Server über UDP mit Test-Clients (Warteschlange, Chat, Kick/Bann, Speedhack-Bremse).
 
+## Bauen mit Nix
+
+Das Flake baut alle Programme unter Linux (x86_64 und aarch64), Rust kommt aus `rust-overlay`:
+
+| Ausgabe | Inhalt |
+|---|---|
+| `.#panzer` (Standard) | das Spiel, mit Startmenü-Eintrag und Symbol |
+| `.#panzer-server` | dedizierter Server, statisch gelinkt (musl) |
+| `.#panzer-server-image` | Docker-Image ohne Betriebssystem, enthält nur den Server |
+| `.#panzer-launcher` | Launcher |
+
+```sh
+nix run                                  # Spiel starten
+nix run .#panzer-server -- --bots 3      # Server starten
+nix develop                              # Umgebung mit cargo, rust-analyzer und allen Bibliotheken
+nix flake check                          # alles bauen und testen
+
+nix build .#panzer-server-image          # Image bauen und laden
+docker load < result
+docker run -dit --name panzer -p 5555:5555/udp -v panzer-data:/data panzer-server:2.1.0
+```
+
+Das Image verhält sich wie das aus dem `Dockerfile`, nur heißt sein Tag wie die Version statt `latest`. Neue Dateien sieht Nix erst, wenn Git sie kennt (`git add`).
+
+**Launcher unter NixOS:** Er lädt das fertige Linux-Spiel aus den Releases, und das braucht einen Standard-Linux-Loader. Unter NixOS startet es deshalb nur mit `programs.nix-ld.enable = true`. Sonst besser gleich `.#panzer` nehmen.
+
 ## Release
 
 1. Version in `Cargo.toml` hochzählen (`[workspace.package]`), danach `cargo check` für die `Cargo.lock`.
