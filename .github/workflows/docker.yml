@@ -1,0 +1,55 @@
+# Baut das Server-Image auf beiden Wegen (Dockerfile und Nix) und startet es kurz.
+# Veröffentlicht wird nichts.
+name: Docker
+
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - ".github/workflows/docker.yml"
+      - ".dockerignore"
+      - "Dockerfile"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/core/**"
+      - "crates/server/**"
+      - "flake.lock"
+      - "flake.nix"
+      - "nix/**"
+  pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dockerfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Image bauen
+        run: docker build -t panzer-server:ci .
+      - name: Image starten
+        run: |
+          docker run -d --name panzer -e PANZER_PORT=6000 -e PANZER_BOTS=2 panzer-server:ci
+          sleep 2
+          docker logs panzer
+          test "$(docker inspect -f '{{.State.Running}}' panzer)" = true
+          docker logs panzer | grep -F 'UDP-Port 6000 (2 Bots)'
+
+  nix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+      - name: Image bauen
+        run: nix build -L .#panzer-server-image
+      - name: Image starten
+        run: |
+          image=$(docker load -i result | sed -n 's/^Loaded image: //p')
+          docker run -d --name panzer -e PANZER_PORT=6000 -e PANZER_BOTS=2 "$image"
+          sleep 2
+          docker logs panzer
+          test "$(docker inspect -f '{{.State.Running}}' panzer)" = true
+          docker logs panzer | grep -F 'UDP-Port 6000 (2 Bots)'
