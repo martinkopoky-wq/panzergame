@@ -215,6 +215,16 @@ Ungefähr jede dritte Runde bekommt eine Sonderregel, die am Anfang groß angeze
 ## Netzwerk
 
 - **Dedizierter Server:** `./server_start.sh` bzw. `server_start.bat`, oder direkt `panzer-server [--port 5555] [--bots N] [--admin-pass PW] [--bans bans.txt]`. Läuft ohne Grafik, z. B. auf dem Homeserver. Auf der Konsole gehen dieselben Befehle ohne `/` (`kick`, `ban`, `bots 3`, `say hallo` …). Dann spielt niemand mit Heimvorteil, der Host-Rechner ist nicht mehr gleichzeitig Spieler und Schiedsrichter.
+- **Docker:** `docker build -t panzer-server .` baut ein Image ohne Betriebssystem (`FROM scratch`), das nur die statische Binärdatei enthält. Gestartet wird es mit `docker run -dit --name panzer -p 5555:5555/udp -e PANZER_BOTS=3 -e PANZER_ADMIN_PASS=geheim -v panzer-data:/data panzer-server`. Die Bannliste liegt im Volume unter `/data`. Ein Bind-Mount muss für UID 65534 beschreibbar sein. Zur Konsole geht es mit `docker attach panzer`, zurück mit Strg+P, dann Strg+Q (Strg+C beendet den Server hier nicht). Beenden mit `docker stop panzer`. Wer `PANZER_PORT` ändert, muss auch die Portfreigabe `-p` anpassen.
+- **Umgebungsvariablen:** Alle Optionen des dedizierten Servers gehen auch ohne Docker per Umgebung. Die Kommandozeile hat Vorrang, leere Werte zählen als nicht gesetzt.
+
+  | Variable | Option | Standard |
+  |---|---|---|
+  | `PANZER_PORT` | `--port` | `5555` |
+  | `PANZER_BOTS` | `--bots` | `0` (höchstens 7) |
+  | `PANZER_ADMIN_PASS` | `--admin-pass` | keins |
+  | `PANZER_BANS` | `--bans` | `bans.txt`, im Docker-Image `/data/bans.txt` |
+  | `PANZER_QUIET` | `--quiet` | `0` (`1` schaltet das Log ab) |
 - Der Server simuliert mit festen 60 Ticks/s und schickt jedem Spieler 60 Snapshots/s über **UDP**. Snapshots sind binär und als **Delta** gegen den letzten bestätigten Snapshot kodiert: typisch 30–100 Byte statt mehrerer KB JSON wie früher. Verlorene Pakete halten nichts auf (kein TCP-Stau mehr).
 - Der Client schickt pro Frame seine Eingabe und alle noch unbestätigten mit (bis zu 24), damit verlorene Pakete nichts ausmachen. Chat, Labyrinth und Spielerliste gehen als zuverlässige Nachrichten.
 - Der Client sagt seinen eigenen Panzer voraus (Prediction) und zeigt die anderen 75 ms verzögert und interpoliert.

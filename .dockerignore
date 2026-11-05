@@ -1,0 +1,5 @@
+# Für den Server-Build reichen Workspace-Manifeste und Quellcode
+*
+!Cargo.toml
+!Cargo.lock
+!crates
