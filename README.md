@@ -79,7 +79,7 @@ nix flake check                          # alles bauen und testen
 
 nix build .#panzer-server-image          # Image bauen und laden
 docker load < result
-docker run -dit --name panzer -p 5555:5555/udp -v panzer-data:/data panzer-server:2.1.2
+docker run -dit --name panzer -p 5555:5555/udp -v panzer-data:/data panzer-server:2.2.0
 ```
 
 Das Image verhält sich wie das aus dem `Dockerfile`, nur heißt sein Tag wie die Version statt `latest`. Neue Dateien sieht Nix erst, wenn Git sie kennt (`git add`).

@@ -36,6 +36,10 @@ pub struct Tank {
     pub taunt: u8,
     pub taunt_time: f64,
     pub taunt_key: u8,
+    /// Entwaffnet: so lange kann die liegende Waffe nicht aufgehoben werden
+    pub nopick: f64,
+    /// Zweitakt: wer den Panzer markiert hat und bis wann (Spielzeit)
+    pub mark: Option<(usize, f64)>,
 }
 
 impl Tank {
@@ -57,6 +61,8 @@ impl Tank {
             taunt: 0,
             taunt_time: 0.0,
             taunt_key: 0,
+            nopick: 0.0,
+            mark: None,
         }
     }
 
@@ -97,6 +103,8 @@ pub struct Shot {
     pub cool: f64,
     /// Geschützturm/Orbitallaser: Winkel
     pub ang: f64,
+    /// Kugelfresser: geschluckte Kugeln
+    pub eaten: u8,
 }
 
 impl Shot {
@@ -133,6 +141,7 @@ impl Shot {
             stuck: None,
             cool: 0.0,
             ang: 0.0,
+            eaten: 0,
         }
     }
 

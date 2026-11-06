@@ -22,6 +22,7 @@ mod net;
 mod particles;
 mod raster;
 mod render;
+mod showcase;
 mod sprites;
 mod ui;
 
@@ -171,6 +172,14 @@ async fn main() {
     let mut app = App { g, r, cfg, demo: None, fullscreen: false, frames: 0 };
 
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Aufnahme für die Doku: panzer showcase <waffe> <ordner>
+    if args.len() == 3 && args[0] == "showcase" {
+        let item = panzer_core::items::ALL_ITEMS.iter().copied().find(|i| format!("{i:?}").eq_ignore_ascii_case(&args[1]));
+        let Some(item) = item else { panic!("unbekannte Waffe: {}", args[1]) };
+        showcase::run(&mut app, item, &args[2]).await;
+        app.cfg.save();
+        return;
+    }
     let mut action = match args.first().map(|s| s.as_str()) {
         Some("host") => Some(Action::Host {
             port: num(&args, 1, PORT as usize) as u16,

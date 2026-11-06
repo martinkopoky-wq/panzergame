@@ -1,6 +1,7 @@
-## Behoben in 2.1.2
-- Esc im Menü hat das ganze Spiel beendet. Ein versehentlicher Druck, und die Partie war weg. Das Menü wird jetzt nur noch über das Fenster beendet, Esc führt wie gehabt aus dem Spiel zurück ins Menü
-- Die ersten Nachrichten des Servers beim Beitritt konnte der Client verlieren, weil sie vor der fertigen Verbindung ankamen: Labyrinth, Spielerliste und Chat fehlten dann, bis der Server erneut schickte. Wer wartet, sieht die laufende Runde jetzt sofort
+## Neu in 2.2.0
+- 26 neue Waffen: Geschossschere, Hohlringgranate, Distanzzünder, Kugelfresser, Entwaffnungsfächer, Zweitaktgeschoss, Eckenschuss, Kettenzange, Schwenkhammer, Zündpause, Köderladung, Schattensalve, Rohrverdreher, Geschossweiche, Nachbrennbild, Richtungsdorn, Trittplatte, Zangenmarkierung, Fadenkreuzfluch, Kreuzpendel, Stillstandsurteil, Geschossbrüter, Konterklinge, Rostwolke, Prallkissen, Kanonenschlag
+- Waffen-Doku: auf der Website (Menü „Waffen“) und im Launcher („WAFFEN“) mit Vorschau jeder Waffe
 
 ## Wichtig
-- PROTO bleibt 9, alle Versionen ab 2.1.0 können weiter zusammen spielen
+- PROTO ist jetzt 11. Versionen bis 2.1.2 können mit 2.2.0 nicht zusammen spielen, Client und Server müssen beide 2.2.0 sein
+- Die neuen Waffen sind Startwerte und noch nicht ausbalanciert

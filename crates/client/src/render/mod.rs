@@ -116,6 +116,8 @@ pub struct Renderer {
     quiet: bool,
     slow_seen: bool,
     focus: Option<(f32, f32)>,
+    /// Showcase: fester Ausschnitt der Welt (x, y, Breite, Höhe), sonst das ganze Labyrinth
+    pub crop: Option<Rect>,
     cine: f32,
     my_eff: Effects,
     me: Option<usize>,
@@ -161,6 +163,7 @@ impl Renderer {
             quiet: false,
             slow_seen: false,
             focus: None,
+            crop: None,
             cine: 0.0,
             my_eff: Effects::default(),
             me: None,
@@ -323,6 +326,9 @@ impl Renderer {
         let (ww, wh) = (arena.ww as f32, arena.wh as f32);
         let zoom = if self.focus.is_some() && !f.quiet { 1.0 + 0.16 * self.cine } else { 1.0 };
         let mut src = Rect::new(0.0, 0.0, ww / zoom, wh / zoom);
+        if let Some(c) = self.crop {
+            src = c;
+        }
         if let Some((fx, fy)) = self.focus.filter(|_| zoom > 1.002) {
             src.x = (fx - src.w / 2.0).clamp(0.0, ww - src.w);
             src.y = (fy - src.h / 2.0).clamp(0.0, wh - src.h);

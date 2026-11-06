@@ -43,6 +43,7 @@ impl Game {
             let t = &mut self.tanks[ti];
             t.shield = (t.shield - gdt).max(0.0);
             t.taunt_time = (t.taunt_time - dt).max(0.0);
+            t.nopick = (t.nopick - dt).max(0.0);
             for &e in crate::items::ALL_EFFS {
                 if !self.tanks[ti].has(e) {
                     continue; // nicht aktiv oder Panzer ist gerade explodiert
@@ -138,7 +139,7 @@ impl Game {
             let mut taken = false;
             for ti in 0..self.tanks.len() {
                 let t = &self.tanks[ti];
-                if !t.alive || hypot(t.x - bx, t.y - by) > t.radius() + 12.0 {
+                if !t.alive || t.nopick > 0.0 || hypot(t.x - bx, t.y - by) > t.radius() + 12.0 {
                     continue;
                 }
                 if self.give(ti, kind) {
@@ -174,7 +175,53 @@ impl Game {
                     self.trap_check(si);
                     continue;
                 }
-                Kind::Strike | Kind::Arty | Kind::Meteor | Kind::Timebomb => continue,
+                Kind::Strike | Kind::Arty | Kind::Meteor | Kind::Timebomb | Kind::Ring => continue,
+                Kind::Chain | Kind::Hammer | Kind::Shadow | Kind::Twist | Kind::Afterburn => continue,
+                Kind::Switch => {
+                    self.switch_step(si);
+                    continue;
+                }
+                Kind::Thorn => {
+                    self.thorn_check(si);
+                    continue;
+                }
+                Kind::Plate => {
+                    self.plate_check(si, gdt);
+                    continue;
+                }
+                Kind::Pincer => {
+                    self.pincer_step(si, gdt);
+                    continue;
+                }
+                Kind::Cross => {
+                    self.cross_step(si);
+                    continue;
+                }
+                Kind::Pendel => {
+                    self.pendel_step(si, gdt);
+                    continue;
+                }
+                Kind::Verdict => {
+                    self.verdict_step(si, gdt);
+                    continue;
+                }
+                Kind::Catcher => {
+                    self.catcher_step(si);
+                    continue;
+                }
+                Kind::Rust => {
+                    self.rust_step(si);
+                    continue;
+                }
+                Kind::Cushion => {
+                    self.cushion_step(si);
+                    continue;
+                }
+                Kind::Cracker => continue,
+                Kind::Decoy => {
+                    self.decoy_check(si);
+                    continue;
+                }
                 Kind::Oil | Kind::Oilf | Kind::Burn => {
                     self.oil(si);
                     continue;
@@ -221,6 +268,10 @@ impl Game {
                 }
                 _ => {}
             }
+            if self.shots[si].cool > 0.0 && matches!(k, Kind::B | Kind::Mg | Kind::Sg | Kind::Bnc) {
+                self.shots[si].cool = (self.shots[si].cool - gdt).max(0.0);
+                continue;
+            }
             if k == Kind::Spider && !self.spider(si, gdt) {
                 continue;
             }
@@ -231,9 +282,13 @@ impl Game {
             } else if self.fly(si, gdt) {
                 continue;
             }
+            if k == Kind::Eater {
+                self.eat(si);
+            }
             for ti in 0..self.tanks.len() {
                 let (s, t) = (&self.shots[si], &self.tanks[ti]);
-                if !t.alive || (t.slot == s.owner && s.age < s.grace) {
+                // Distanzzünder ist erst nach DIST_ARM Flugstrecke scharf
+                if !t.alive || (t.slot == s.owner && s.age < s.grace) || (k == Kind::Dist && s.age * s.speed < DIST_ARM) {
                     continue;
                 }
                 if hypot(t.x - s.x, t.y - s.y) < t.radius() + s.r - 1.0 {
@@ -551,6 +606,17 @@ impl Game {
             }
             return;
         }
+        if k == Kind::Double {
+            let (by, now) = (self.shots[si].owner, self.gtime);
+            match self.tanks[ti].mark {
+                Some((owner, until)) if owner == by && until > now => self.tanks[ti].mark = None,
+                _ => {
+                    self.tanks[ti].mark = Some((by, now + DOUBLE_MARK));
+                    self.shots[si].dead = true;
+                    return;
+                }
+            }
+        }
         if k == Kind::Sticky {
             // klebt am Panzer fest
             let s = &mut self.shots[si];
@@ -611,6 +677,25 @@ impl Game {
         let k = self.shots[si].kind;
         let (x, y) = qp(self.shots[si].x, self.shots[si].y);
         match k {
+            Kind::Chain => return self.chain_end(si),
+            Kind::Hammer => return self.hammer_swing(si),
+            Kind::Shadow => return self.shadow_fire(si),
+            Kind::Twist => return self.twist_pulse(si),
+            Kind::Afterburn => return self.afterburn_hit(si),
+            Kind::Cracker => return self.cracker_boom(si),
+            Kind::Cross => return self.cross_hit(si),
+            Kind::Plate if self.shots[si].cool == 0.0 => {
+                self.shots[si].dead = true;
+                return;
+            }
+            // Köder, der nie ausgelöst wurde, verschwindet still
+            Kind::Decoy if self.shots[si].cool == 0.0 => {
+                self.shots[si].dead = true;
+                return;
+            }
+            _ => {}
+        }
+        match k {
             Kind::Frag => return self.explode(si),
             Kind::Nuke => return self.nuke(si),
             Kind::Fw => return self.burst(si),
@@ -622,6 +707,9 @@ impl Game {
                 return;
             }
             _ => {}
+        }
+        if k == Kind::Ring {
+            return self.ring_boom(si);
         }
         if k.blast().is_some() {
             let size = match k {
@@ -644,6 +732,383 @@ impl Game {
             Kind::Hole | Kind::Orbit => self.fx(FxData::Boom { x, y, size: 40 }, 0.35),
             _ => {}
         }
+    }
+
+    /// Kugelfresser: schluckt normale Kugeln, wird dabei größer und langsamer.
+    fn eat(&mut self, si: usize) {
+        let (ex, ey, eowner) = (self.shots[si].x, self.shots[si].y, self.shots[si].owner);
+        for j in 0..self.shots.len() {
+            if self.shots[si].eaten >= EATER_MAX || self.shots[si].dead {
+                break;
+            }
+            let o = &self.shots[j];
+            if j == si || o.dead || o.owner == eowner || !matches!(o.kind, Kind::B | Kind::Mg | Kind::Sg | Kind::Bnc) {
+                continue;
+            }
+            if hypot(o.x - ex, o.y - ey) >= self.shots[si].r + o.r {
+                continue;
+            }
+            self.shots[j].dead = true;
+            let s = &mut self.shots[si];
+            s.eaten += 1;
+            s.r += 3.0;
+            let v = (s.speed - 20.0).max(40.0);
+            let f = v / s.speed;
+            s.vx *= f;
+            s.vy *= f;
+            s.speed = v;
+        }
+    }
+
+    /// Hohlringgranate: trifft nur Panzer zwischen RING_IN und RING_OUT, Zentrum ist sicher.
+    fn ring_boom(&mut self, si: usize) {
+        let (x, y, owner) = (self.shots[si].x, self.shots[si].y, self.shots[si].owner);
+        self.shots[si].dead = true;
+        let (px, py) = qp(x, y);
+        self.fx(FxData::Boom { x: px, y: py, size: 60 }, 0.5);
+        for ti in 0..self.tanks.len() {
+            let t = &self.tanks[ti];
+            if !t.alive {
+                continue;
+            }
+            let d = hypot(t.x - x, t.y - y);
+            if (RING_IN..=RING_OUT).contains(&d) {
+                let a = (t.y - y).atan2(t.x - x);
+                self.hit(ti, Some(owner), Kind::Ring, false, Some(a), 0);
+            }
+        }
+    }
+
+    /// Köderladung: scharf nach DECOY_ARM, löst aus, sobald eine gegnerische Kugel nah genug kommt.
+    fn decoy_check(&mut self, si: usize) {
+        let s = &self.shots[si];
+        if s.cool > 0.0 || s.age < DECOY_ARM {
+            return;
+        }
+        let (x, y, owner) = (s.x, s.y, s.owner);
+        let hit = self.shots.iter().any(|o| {
+            !o.dead && o.owner != owner && o.kind != Kind::Decoy && hypot(o.x - x, o.y - y) <= DECOY_SENSE + o.r
+        });
+        if hit {
+            let s = &mut self.shots[si];
+            s.cool = 1.0;
+            s.life = s.age + DECOY_FUSE;
+        }
+    }
+
+    /// Kettenzange: nach der Haltezeit trifft die Zange das Opfer, falls der Angreifer noch lebt.
+    fn chain_end(&mut self, si: usize) {
+        self.shots[si].dead = true;
+        let (owner, victim) = (self.shots[si].owner, self.shots[si].stuck);
+        let Some(vslot) = victim else { return };
+        let Some(vi) = self.tank_index(vslot as usize) else { return };
+        let attacker_alive = self.tank_index(owner).is_some_and(|ai| self.tanks[ai].alive);
+        if attacker_alive && self.tanks[vi].alive {
+            let a = (self.tanks[vi].y - self.shots[si].y).atan2(self.tanks[vi].x - self.shots[si].x);
+            self.hit(vi, Some(owner), Kind::Chain, false, Some(a), 0);
+        }
+    }
+
+    /// Schwenkhammer: schlägt einmal durch den Sektor vor dem Panzer.
+    fn hammer_swing(&mut self, si: usize) {
+        self.shots[si].dead = true;
+        let (x, y, a, owner) = (self.shots[si].x, self.shots[si].y, self.shots[si].ang, self.shots[si].owner);
+        for ti in 0..self.tanks.len() {
+            let t = &self.tanks[ti];
+            if !t.alive || t.slot == owner {
+                continue;
+            }
+            if hypot(t.x - x, t.y - y) <= HAMMER_RANGE + t.radius()
+                && angle_diff((t.y - y).atan2(t.x - x), a).abs() <= HAMMER_HALF
+            {
+                let ang = (t.y - y).atan2(t.x - x);
+                self.hit(ti, Some(owner), Kind::Hammer, false, Some(ang), 0);
+            }
+        }
+    }
+
+    /// Schattensalve: die Silhouette feuert drei Kugeln in ihrer Blickrichtung.
+    fn shadow_fire(&mut self, si: usize) {
+        self.shots[si].dead = true;
+        let (x, y, a, owner) = (self.shots[si].x, self.shots[si].y, self.shots[si].ang, self.shots[si].owner);
+        if !self.tank_index(owner).is_some_and(|ti| self.tanks[ti].alive) {
+            return;
+        }
+        for d in [-SHADOW_SPREAD, 0.0, SHADOW_SPREAD] {
+            self.spawn(Kind::B, owner, x, y, a + d, SHADOW_SPEED, 3.0, SHADOW_LIFE, OWNER_GRACE, MUZZLE);
+        }
+    }
+
+    /// Rohrverdreher: Panzer im Umkreis drehen sich um 90°.
+    fn twist_pulse(&mut self, si: usize) {
+        self.shots[si].dead = true;
+        let (x, y) = (self.shots[si].x, self.shots[si].y);
+        for t in self.tanks.iter_mut() {
+            if t.alive && hypot(t.x - x, t.y - y) <= TWIST_RANGE {
+                t.a += std::f64::consts::FRAC_PI_2;
+            }
+        }
+    }
+
+    /// Geschossweiche: dreht gegnerische Kugeln im Umkreis um 90° nach links (höchstens SWITCH_MAX).
+    fn switch_step(&mut self, si: usize) {
+        let (zx, zy, owner) = (self.shots[si].x, self.shots[si].y, self.shots[si].owner);
+        for j in 0..self.shots.len() {
+            if self.shots[si].eaten >= SWITCH_MAX {
+                break;
+            }
+            let o = &self.shots[j];
+            if j == si || o.dead || o.eaten != 0 || o.owner == owner || !matches!(o.kind, Kind::B | Kind::Mg | Kind::Sg | Kind::Bnc) {
+                continue;
+            }
+            if hypot(o.x - zx, o.y - zy) > SWITCH_R {
+                continue;
+            }
+            let o = &mut self.shots[j];
+            let a = o.heading() - std::f64::consts::FRAC_PI_2;
+            o.vx = a.cos() * o.speed;
+            o.vy = a.sin() * o.speed;
+            o.eaten = 1;
+            self.shots[si].eaten += 1;
+        }
+    }
+
+    /// Nachbrennbild: am Ende trifft die Linie alle Panzer, die auf ihr stehen.
+    fn afterburn_hit(&mut self, si: usize) {
+        self.shots[si].dead = true;
+        let (x, y, a, owner) = (self.shots[si].x, self.shots[si].y, self.shots[si].ang, self.shots[si].owner);
+        let (x1, y1) = (x + a.cos() * AFTERBURN_LEN, y + a.sin() * AFTERBURN_LEN);
+        for ti in 0..self.tanks.len() {
+            let t = &self.tanks[ti];
+            if t.alive && seg_dist(t.x, t.y, x, y, x1, y1) <= AFTERBURN_HALF_W + t.radius() {
+                self.hit(ti, Some(owner), Kind::Afterburn, false, Some(a), 0);
+            }
+        }
+    }
+
+    /// Richtungsdorn: scharf nach THORN_FUSE, löst aus, wenn ein Panzer von der Pfeilseite kommt.
+    fn thorn_check(&mut self, si: usize) {
+        if self.shots[si].age < THORN_FUSE {
+            return;
+        }
+        let (x, y, a, owner) = (self.shots[si].x, self.shots[si].y, self.shots[si].ang, self.shots[si].owner);
+        let (dx, dy) = (a.cos(), a.sin());
+        for ti in 0..self.tanks.len() {
+            let t = &self.tanks[ti];
+            if !t.alive {
+                continue;
+            }
+            let (rx, ry) = (t.x - x, t.y - y);
+            // der Leger darf drüberfahren, nur Gegner von der Pfeilseite lösen aus
+            if t.slot == owner || hypot(rx, ry) > THORN_REACH + t.radius() || rx * dx + ry * dy <= 0.0 {
+                continue;
+            }
+            self.shots[si].dead = true;
+            self.hit(ti, Some(owner), Kind::Thorn, false, Some(a), 0);
+            return;
+        }
+    }
+
+    /// Trittplatte: zählt Betritte, nach PLATE_COUNT Stück gibt es eine Vorwarnung und dann die Explosion.
+    fn plate_check(&mut self, si: usize, dt: f64) {
+        if self.shots[si].cool > 0.0 {
+            let c = self.shots[si].cool - dt;
+            if c <= 0.0 {
+                self.boom_shot(si, 0.8);
+            } else {
+                self.shots[si].cool = c;
+            }
+            return;
+        }
+        let (x, y) = (self.shots[si].x, self.shots[si].y);
+        let inside = self.tanks.iter().any(|t| t.alive && hypot(t.x - x, t.y - y) < PLATE_R);
+        let was = self.shots[si].ang > 0.0;
+        if inside && !was {
+            self.shots[si].eaten += 1;
+            if self.shots[si].eaten >= PLATE_COUNT {
+                self.shots[si].cool = PLATE_WARN;
+            }
+        }
+        self.shots[si].ang = if inside { 1.0 } else { 0.0 };
+    }
+
+    /// Zangenmarkierung: die Zange läuft nach PINCER_FUSE auf die Mitte zu und trifft jeden Panzer auf dem Weg.
+    fn pincer_step(&mut self, si: usize, dt: f64) {
+        if self.shots[si].age < PINCER_FUSE {
+            return;
+        }
+        let step = self.shots[si].speed * dt;
+        {
+            let s = &mut self.shots[si];
+            s.x += s.vx * step;
+            s.y += s.vy * step;
+            s.cool += step;
+        }
+        if self.shots[si].cool >= PINCER_LAT {
+            self.shots[si].dead = true;
+            return;
+        }
+        let (x, y, owner) = (self.shots[si].x, self.shots[si].y, self.shots[si].owner);
+        for ti in 0..self.tanks.len() {
+            let t = &self.tanks[ti];
+            if t.alive && hypot(t.x - x, t.y - y) < PINCER_R + t.radius() {
+                let a = (t.y - y).atan2(t.x - x);
+                self.shots[si].dead = true;
+                self.hit(ti, Some(owner), Kind::Pincer, false, Some(a), 0);
+                return;
+            }
+        }
+    }
+
+    /// Fadenkreuzfluch: folgt dem Ziel bis CROSS_FOLLOW, danach bleibt es stehen.
+    fn cross_step(&mut self, si: usize) {
+        if self.shots[si].age >= CROSS_FOLLOW {
+            return;
+        }
+        let Some(vs) = self.shots[si].stuck else { return };
+        if let Some(vi) = self.tank_index(vs as usize) {
+            let t = &self.tanks[vi];
+            if t.alive {
+                let (x, y) = (t.x, t.y);
+                self.shots[si].x = x;
+                self.shots[si].y = y;
+            }
+        }
+    }
+
+    /// Fadenkreuzfluch: nach dem Einfrieren trifft alles im Kreis.
+    fn cross_hit(&mut self, si: usize) {
+        self.shots[si].dead = true;
+        let (x, y, owner) = (self.shots[si].x, self.shots[si].y, self.shots[si].owner);
+        for ti in 0..self.tanks.len() {
+            let t = &self.tanks[ti];
+            if t.alive && hypot(t.x - x, t.y - y) <= CROSS_R {
+                let a = (t.y - y).atan2(t.x - x);
+                self.hit(ti, Some(owner), Kind::Cross, false, Some(a), 0);
+            }
+        }
+    }
+
+    /// Kreuzpendel: ein Arm dreht sich um den Sockel. Nach PENDEL_WARN trifft er alle außer dem Schützen.
+    fn pendel_step(&mut self, si: usize, dt: f64) {
+        self.shots[si].ang += PENDEL_SPEED * dt;
+        if self.shots[si].age < PENDEL_WARN {
+            return;
+        }
+        let (x, y, owner) = (self.shots[si].x, self.shots[si].y, self.shots[si].owner);
+        let a = self.shots[si].ang;
+        let (x1, y1) = (x + a.cos() * PENDEL_LEN, y + a.sin() * PENDEL_LEN);
+        for ti in 0..self.tanks.len() {
+            let t = &self.tanks[ti];
+            if t.alive && t.slot != owner && seg_dist(t.x, t.y, x, y, x1, y1) <= PENDEL_R + t.radius() {
+                self.hit(ti, Some(owner), Kind::Pendel, false, Some(a), 0);
+            }
+        }
+    }
+
+    /// Stillstandsurteil: folgt dem Ziel. Bleibt es VERDICT_STILL lang stehen, trifft das Urteil.
+    fn verdict_step(&mut self, si: usize, dt: f64) {
+        let owner = self.shots[si].owner;
+        let Some(vs) = self.shots[si].stuck else {
+            self.shots[si].dead = true;
+            return;
+        };
+        let Some(vi) = self.tank_index(vs as usize) else {
+            self.shots[si].dead = true;
+            return;
+        };
+        if !self.tanks[vi].alive {
+            self.shots[si].dead = true;
+            return;
+        }
+        let (tx, ty) = (self.tanks[vi].x, self.tanks[vi].y);
+        self.shots[si].x = tx;
+        self.shots[si].y = ty;
+        let (rx, ry) = (self.shots[si].vx, self.shots[si].vy);
+        if hypot(tx - rx, ty - ry) > VERDICT_TOL {
+            let s = &mut self.shots[si];
+            s.vx = tx;
+            s.vy = ty;
+            s.cool = 0.0;
+        } else {
+            self.shots[si].cool += dt;
+            if self.shots[si].cool >= VERDICT_STILL {
+                self.shots[si].dead = true;
+                self.hit(vi, Some(owner), Kind::Verdict, false, None, 0);
+            }
+        }
+    }
+
+    /// Geschossbrüter: wirft gegnerische Kugeln im Fangradius zurück, bis CATCHER_MAX erreicht sind.
+    fn catcher_step(&mut self, si: usize) {
+        let (x, y, owner) = (self.shots[si].x, self.shots[si].y, self.shots[si].owner);
+        for j in 0..self.shots.len() {
+            if self.shots[si].eaten >= CATCHER_MAX {
+                break;
+            }
+            let o = &self.shots[j];
+            if j == si || o.dead || o.owner == owner || o.eaten != 0 || !matches!(o.kind, Kind::B | Kind::Mg | Kind::Sg | Kind::Bnc) {
+                continue;
+            }
+            if hypot(o.x - x, o.y - y) > CATCHER_R {
+                continue;
+            }
+            let o = &mut self.shots[j];
+            o.vx = -o.vx;
+            o.vy = -o.vy;
+            o.owner = owner;
+            o.grace = o.age + 0.25; // der Schütze des Geschossbrüters wird nicht sofort getroffen
+            o.eaten = 1;
+            self.shots[si].eaten += 1;
+        }
+    }
+
+    /// Rostwolke: wer in der Wolke steht, kann nicht schießen (und danach RUST_PAUSE lang auch nicht).
+    fn rust_step(&mut self, si: usize) {
+        let (x, y) = (self.shots[si].x, self.shots[si].y);
+        for t in self.tanks.iter_mut() {
+            if t.alive && hypot(t.x - x, t.y - y) <= RUST_R {
+                t.cooldown = t.cooldown.max(RUST_PAUSE);
+            }
+        }
+    }
+
+    /// Prallkissen: nach CUSHION_ARM scharf. Jeder, der neu hineinfährt, wird um CUSHION_PUSH weggeschoben.
+    fn cushion_step(&mut self, si: usize) {
+        if self.shots[si].age < CUSHION_ARM {
+            return;
+        }
+        let (x, y, mask) = (self.shots[si].x, self.shots[si].y, self.shots[si].hit_mask);
+        let mut now_inside = 0u8;
+        for ti in 0..self.tanks.len() {
+            let t = &self.tanks[ti];
+            if !t.alive || hypot(t.x - x, t.y - y) >= CUSHION_R + t.radius() {
+                continue;
+            }
+            let bit = 1u8 << t.slot;
+            now_inside |= bit;
+            if mask & bit == 0 {
+                let a = (t.y - y).atan2(t.x - x);
+                let (nx, ny) = (t.x + a.cos() * CUSHION_PUSH, t.y + a.sin() * CUSHION_PUSH);
+                let (sx, sy) = self.settle(ti, nx, ny);
+                self.tanks[ti].x = sx;
+                self.tanks[ti].y = sy;
+            }
+        }
+        self.shots[si].hit_mask = now_inside;
+    }
+
+    /// Kanonenschlag: zündet und wirft CRACKER_N kleine Splitter in zufällige Richtungen.
+    fn cracker_boom(&mut self, si: usize) {
+        self.shots[si].dead = true;
+        let (x, y, owner) = (self.shots[si].x, self.shots[si].y, self.shots[si].owner);
+        let base = self.rng.uniform(0.0, std::f64::consts::TAU);
+        for k in 0..CRACKER_N {
+            let a = base + std::f64::consts::TAU * k as f64 / CRACKER_N as f64;
+            self.spawn(Kind::Frg, owner, x, y, a, CRACKER_SPEED, 3.0, 0.6, 0.0, 0.0);
+        }
+        let (px, py) = qp(x, y);
+        self.fx(FxData::Boom { x: px, y: py, size: 25 }, 0.4);
     }
 
     /// Öl macht rutschig. Kommt Feuer dran, brennt es und erwischt jeden darin.

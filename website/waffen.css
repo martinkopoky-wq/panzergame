@@ -1,0 +1,23 @@
+/* Waffen-Doku: nutzt die Farben und Schriften aus style.css */
+.docs-intro { padding: 2.5rem 0 1rem; }
+.docs-intro h1 { margin: 0 0 .5rem; }
+.docs-filter { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.docs-filter button {
+  font: inherit; padding: .4rem .9rem; border-radius: 999px; cursor: pointer;
+  border: 1px solid currentColor; background: transparent; color: inherit; opacity: .75;
+}
+.docs-filter button[aria-pressed="true"] { opacity: 1; background: rgba(255, 176, 96, .15); }
+.docs-grid {
+  list-style: none; margin: 1.5rem 0 3rem; padding: 0;
+  display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+.docs-card { background: rgba(255, 255, 255, .04); border-radius: 12px; overflow: hidden; }
+.docs-media { aspect-ratio: 800 / 544; background: #0d0e12; }
+.docs-media video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.docs-body { padding: .9rem 1rem 1.1rem; }
+.docs-head { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
+.docs-head h2 { font-size: 1.15rem; margin: 0; }
+.docs-tag { font-size: .75rem; padding: .15rem .5rem; border-radius: 999px; background: rgba(255, 255, 255, .08); white-space: nowrap; }
+.docs-body p { margin: .5rem 0 0; line-height: 1.45; }
+.docs-ammo { opacity: .7; font-size: .9rem; }
+.docs-empty { grid-column: 1 / -1; opacity: .7; }

@@ -34,6 +34,10 @@ fn single_shot(w: Item) -> Option<(Kind, f64, f64, f64, f64)> {
         Item::Wave => (Kind::Wave, WAVE_SPEED, 4.0, WAVE_LIFE, OWNER_GRACE),
         Item::Napalm => (Kind::Napalm, NAPALM_SPEED, 5.0, NAPALM_FUSE, 0.4),
         Item::Hook => (Kind::Hook, HOOK_SPEED, 5.0, HOOK_LIFE, 1e9),
+        Item::Dist => (Kind::Dist, DIST_SPEED, DIST_R, DIST_LIFE, 0.3),
+        Item::Eater => (Kind::Eater, EATER_SPEED, EATER_R, EATER_LIFE, OWNER_GRACE),
+        Item::Double => (Kind::Double, DOUBLE_SPEED, DOUBLE_R, DOUBLE_LIFE, 0.3),
+        Item::Corner => (Kind::Corner, CORNER_SPEED, CORNER_R, CORNER_LIFE, 0.3),
         _ => return None,
     })
 }
@@ -67,6 +71,17 @@ fn laid(w: Item) -> Option<(Kind, f64, f64)> {
 impl Game {
     pub(super) fn trigger(&mut self, ti: usize) {
         let slot = self.tanks[ti].slot;
+        // 2. Druck: Eckenschuss biegt rechts ab (einmal)
+        if let Some(si) = self.shots.iter().position(|s| {
+            s.owner == slot && !s.dead && s.kind == Kind::Corner && s.cool == 0.0
+        }) {
+            let s = &mut self.shots[si];
+            let a = s.heading() + PI / 2.0;
+            s.vx = a.cos() * s.speed;
+            s.vy = a.sin() * s.speed;
+            s.cool = 1.0;
+            return;
+        }
         // 2. Druck: Splitterbombe zünden bzw. zur Tauschkugel springen
         if let Some(si) =
             self.shots.iter().position(|s| s.owner == slot && !s.dead && matches!(s.kind, Kind::Frag | Kind::Swap))
@@ -141,6 +156,84 @@ impl Game {
                     }
                 }
                 Item::Ram => self.tanks[ti].eff.set(Eff::Ram, RAM_TIME),
+                Item::Shear => self.shear(ti),
+                Item::Chain => self.chain(ti),
+                Item::Pause => self.pause(ti),
+                Item::Hammer => {
+                    let t = &self.tanks[ti];
+                    let (x, y, a) = (t.x, t.y, t.a);
+                    let si = self.place(Kind::Hammer, slot, x, y, 0.0, HAMMER_WINDUP);
+                    self.shots[si].ang = a;
+                }
+                Item::Decoy => {
+                    let t = &self.tanks[ti];
+                    let (x, y) = ahead(&self.arena, t.x, t.y, t.a, DECOY_THROW, 12.0);
+                    self.place(Kind::Decoy, slot, x, y, 0.0, DECOY_LIFE);
+                }
+                Item::Switch => {
+                    let t = &self.tanks[ti];
+                    let (x, y) = ahead(&self.arena, t.x, t.y, t.a, SWITCH_DIST, 12.0);
+                    self.place(Kind::Switch, slot, x, y, SWITCH_R, SWITCH_LIFE);
+                }
+                Item::Afterburn => {
+                    let t = &self.tanks[ti];
+                    let (x, y, a) = (t.x, t.y, t.a);
+                    let si = self.place(Kind::Afterburn, slot, x, y, 0.0, AFTERBURN_FUSE);
+                    self.shots[si].ang = a;
+                }
+                Item::Thorn => {
+                    let (x, y) = self.behind(ti, 14.0);
+                    let si = self.place(Kind::Thorn, slot, x, y, 0.0, THORN_LIFE);
+                    self.shots[si].ang = a;
+                }
+                Item::Plate => {
+                    let (x, y) = self.behind(ti, PLATE_R.min(14.0));
+                    self.place(Kind::Plate, slot, x, y, PLATE_R, PLATE_LIFE);
+                }
+                Item::Pincer => self.pincer(ti),
+                Item::Verdict => self.verdict(ti),
+                Item::Catcher => {
+                    let (x, y) = self.behind(ti, 14.0);
+                    self.place(Kind::Catcher, slot, x, y, CATCHER_R, CATCHER_LIFE);
+                }
+                Item::Parry => self.parry(ti),
+                Item::Rust => {
+                    let t = &self.tanks[ti];
+                    let (x, y) = ahead(&self.arena, t.x, t.y, t.a, RUST_THROW, 12.0);
+                    self.place(Kind::Rust, slot, x, y, RUST_R, RUST_LIFE);
+                }
+                Item::Cushion => {
+                    let t = &self.tanks[ti];
+                    let (x, y) = ahead(&self.arena, t.x, t.y, t.a, CUSHION_THROW, 12.0);
+                    self.place(Kind::Cushion, slot, x, y, CUSHION_R, CUSHION_LIFE);
+                }
+                Item::Cracker => {
+                    let (x, y) = self.behind(ti, 6.0);
+                    self.place(Kind::Cracker, slot, x, y, 0.0, CRACKER_FUSE);
+                }
+                Item::Cross => self.cross(ti),
+                Item::Pendel => {
+                    let t = &self.tanks[ti];
+                    let (x, y) = ahead(&self.arena, t.x, t.y, t.a, 40.0, 12.0);
+                    self.place(Kind::Pendel, slot, x, y, 0.0, PENDEL_WARN + PENDEL_LIFE);
+                }
+                Item::Shadow => {
+                    let t = &self.tanks[ti];
+                    let (x, y, a) = (t.x, t.y, t.a);
+                    let si = self.place(Kind::Shadow, slot, x, y, 0.0, SHADOW_FUSE);
+                    self.shots[si].ang = a;
+                }
+                Item::Twist => {
+                    let t = &self.tanks[ti];
+                    let (x, y) = (t.x, t.y);
+                    self.place(Kind::Twist, slot, x, y, 0.0, TWIST_FUSE);
+                }
+                Item::Disarm => self.disarm(ti),
+                Item::Ring => {
+                    let t = &self.tanks[ti];
+                    let (x, y) = ahead(&self.arena, t.x, t.y, t.a, RING_THROW, 12.0);
+                    self.place(Kind::Ring, slot, x, y, 0.0, RING_FUSE);
+                }
                 Item::Strike => {
                     let (t, arena) = (&self.tanks[ti], &self.arena);
                     let (x, y) = strike_target(arena, t.x, t.y, t.a);
@@ -170,6 +263,145 @@ impl Game {
         self.use_ammo(ti);
         let slow = laid(w).is_some() || matches!(w, Item::Wall | Item::Jump | Item::Push);
         self.tanks[ti].cooldown = if slow { 0.35 } else { FIRE_COOLDOWN };
+    }
+
+    /// Geschossschere: schneidet eigene Gegnerkugeln im Kegel vor dem Panzer ab (bis SHEAR_MAX).
+    pub(super) fn shear(&mut self, ti: usize) {
+        let (sx, sy, a, slot) = (self.tanks[ti].x, self.tanks[ti].y, self.tanks[ti].a, self.tanks[ti].slot);
+        let mut left = SHEAR_MAX;
+        for si in 0..self.shots.len() {
+            if left == 0 {
+                break;
+            }
+            let s = &self.shots[si];
+            if s.dead || s.owner == slot || !matches!(s.kind, Kind::B | Kind::Mg | Kind::Sg | Kind::Bnc | Kind::Nv | Kind::Mrk) {
+                continue;
+            }
+            if hypot(s.x - sx, s.y - sy) > SHEAR_RANGE || angle_diff((s.y - sy).atan2(s.x - sx), a).abs() > SHEAR_ARC / 2.0 {
+                continue;
+            }
+            self.shots[si].dead = true;
+            left -= 1;
+        }
+    }
+
+    /// Entwaffnungsfächer: Gegner im Kegel verlieren ihre Waffe, sie liegt als Kiste am Boden.
+    pub(super) fn disarm(&mut self, ti: usize) {
+        let (sx, sy, a) = (self.tanks[ti].x, self.tanks[ti].y, self.tanks[ti].a);
+        for vi in 0..self.tanks.len() {
+            let v = &self.tanks[vi];
+            if vi == ti || !v.alive || v.weapon.is_none() {
+                continue;
+            }
+            if hypot(v.x - sx, v.y - sy) > DISARM_RANGE || angle_diff((v.y - sy).atan2(v.x - sx), a).abs() > DISARM_HALF {
+                continue;
+            }
+            let (x, y) = (v.x, v.y);
+            if let Some(w) = self.tanks[vi].weapon.take() {
+                self.boxes.push((x, y, w));
+                self.tanks[vi].ammo = 0;
+                self.tanks[vi].nopick = DISARM_PICK_WAIT;
+            }
+        }
+    }
+
+    /// Kettenzange: packt den ersten Gegner im Frontwinkel. Beide stehen HOLD still, dann trifft die Zange.
+    pub(super) fn chain(&mut self, ti: usize) {
+        let (sx, sy, a, slot) = (self.tanks[ti].x, self.tanks[ti].y, self.tanks[ti].a, self.tanks[ti].slot);
+        let victim = (0..self.tanks.len()).find(|&vi| {
+            let v = &self.tanks[vi];
+            vi != ti
+                && v.alive
+                && hypot(v.x - sx, v.y - sy) <= CHAIN_RANGE + v.radius()
+                && angle_diff((v.y - sy).atan2(v.x - sx), a).abs() <= CHAIN_HALF
+        });
+        let Some(vi) = victim else { return };
+        let (vx, vy, vslot) = (self.tanks[vi].x, self.tanks[vi].y, self.tanks[vi].slot);
+        let si = self.place(Kind::Chain, slot, vx, vy, 0.0, CHAIN_HOLD);
+        self.shots[si].stuck = Some(vslot as i8);
+        self.freeze(ti, CHAIN_HOLD);
+        self.freeze(vi, CHAIN_HOLD);
+    }
+
+    /// Zündpause: alle normalen Kugeln im Umkreis bleiben PAUSE_TIME lang stehen.
+    pub(super) fn pause(&mut self, ti: usize) {
+        let (x, y) = (self.tanks[ti].x, self.tanks[ti].y);
+        for s in self.shots.iter_mut() {
+            if !s.dead && matches!(s.kind, Kind::B | Kind::Mg | Kind::Sg | Kind::Bnc) && hypot(s.x - x, s.y - y) <= PAUSE_RANGE {
+                s.cool = PAUSE_TIME;
+            }
+        }
+    }
+
+    /// Zangenmarkierung: zwei Zangen starten seitlich vor dem Ziel und laufen zur Mitte.
+    pub(super) fn pincer(&mut self, ti: usize) {
+        let (t, slot) = (&self.tanks[ti], self.tanks[ti].slot);
+        let (cx, cy) = ahead(&self.arena, t.x, t.y, t.a, PINCER_DIST, 12.0);
+        let (lx, ly) = (-t.a.sin(), t.a.cos()); // quer zur Blickrichtung
+        for side in [1.0, -1.0] {
+            let (px, py) = (cx + lx * PINCER_LAT * side, cy + ly * PINCER_LAT * side);
+            let si = self.place(Kind::Pincer, slot, px, py, PINCER_R, PINCER_LIFE);
+            // Richtung zur Mitte, Tempo, zurückgelegte Strecke (in cool)
+            let (dx, dy) = (cx - px, cy - py);
+            let d = dx.hypot(dy).max(1e-9);
+            let s = &mut self.shots[si];
+            s.vx = dx / d;
+            s.vy = dy / d;
+            s.speed = PINCER_SPEED;
+        }
+    }
+
+    /// Fadenkreuzfluch: sperrt einen sichtbaren Gegner ein, friert nach CROSS_FOLLOW ein.
+    pub(super) fn cross(&mut self, ti: usize) {
+        let (x, y, slot) = (self.tanks[ti].x, self.tanks[ti].y, self.tanks[ti].slot);
+        let target = self.nearest(x, y, Some(slot), CROSS_RANGE, true);
+        let (tx, ty, tslot) = match target {
+            Some(vi) => (self.tanks[vi].x, self.tanks[vi].y, Some(self.tanks[vi].slot as i8)),
+            None => {
+                let t = &self.tanks[ti];
+                let (ax, ay) = ahead(&self.arena, t.x, t.y, t.a, CROSS_RANGE, 12.0);
+                (ax, ay, None)
+            }
+        };
+        let si = self.place(Kind::Cross, slot, tx, ty, CROSS_R, CROSS_FOLLOW + CROSS_FREEZE);
+        self.shots[si].stuck = tslot;
+    }
+
+    /// Stillstandsurteil: markiert den nächsten sichtbaren Gegner.
+    pub(super) fn verdict(&mut self, ti: usize) {
+        let (x, y, slot) = (self.tanks[ti].x, self.tanks[ti].y, self.tanks[ti].slot);
+        let Some(vi) = self.nearest(x, y, Some(slot), VERDICT_RANGE, true) else { return };
+        let (tx, ty, vslot) = (self.tanks[vi].x, self.tanks[vi].y, self.tanks[vi].slot);
+        let si = self.place(Kind::Verdict, slot, tx, ty, 0.0, VERDICT_LIFE);
+        let s = &mut self.shots[si];
+        s.stuck = Some(vslot as i8);
+        s.vx = tx; // Ruhepunkt
+        s.vy = ty;
+    }
+
+    /// Konterklinge: wehrt eine Kugel im Frontwinkel ab. Nur dann folgt der Stoß.
+    pub(super) fn parry(&mut self, ti: usize) {
+        let (x, y, a, slot) = (self.tanks[ti].x, self.tanks[ti].y, self.tanks[ti].a, self.tanks[ti].slot);
+        let front = |px: f64, py: f64| {
+            angle_diff((py - y).atan2(px - x), a).abs() <= PARRY_HALF
+        };
+        let bullet = self.shots.iter().position(|s| {
+            !s.dead
+                && s.owner != slot
+                && matches!(s.kind, Kind::B | Kind::Mg | Kind::Sg | Kind::Bnc)
+                && hypot(s.x - x, s.y - y) <= PARRY_REACH
+                && front(s.x, s.y)
+        });
+        let Some(bi) = bullet else { return };
+        self.shots[bi].dead = true;
+        let victim = (0..self.tanks.len()).find(|&vi| {
+            let v = &self.tanks[vi];
+            vi != ti && v.alive && hypot(v.x - x, v.y - y) <= LUNGE_REACH + v.radius() && front(v.x, v.y)
+        });
+        if let Some(vi) = victim {
+            let ang = (self.tanks[vi].y - y).atan2(self.tanks[vi].x - x);
+            self.hit(vi, Some(slot), Kind::Parry, false, Some(ang), 0);
+        }
     }
 
     /// Platz hinter dem Panzer (Minen, Öl, Fallen), aber nicht durch eine Wand.

@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 
 pub const PORT: u16 = 5555;
 /// Protokollversion, Server und Client müssen übereinstimmen
-pub const PROTO: u16 = 9;
+pub const PROTO: u16 = 11;
 pub const MAX_PLAYERS: usize = 8;
 /// mehr passen nicht sinnvoll auf eine Tastatur
 pub const MAX_LOCAL: usize = 4;
@@ -514,3 +514,135 @@ pub const THEMES: [Theme; 6] = [
         amb: Ambient::Neon,
     },
 ];
+
+// Batch 1 (Entwürfe von Codex, Werte als Startwerte für Spieltests)
+/// Geschossschere: Reichweite, voller Öffnungswinkel, höchstens so viele Kugeln
+pub const SHEAR_RANGE: f64 = 150.0;
+pub const SHEAR_ARC: f64 = PI / 3.0;
+pub const SHEAR_MAX: usize = 6;
+/// Hohlringgranate: Wurfweite, Zündzeit, innerer und äußerer Radius des Rings
+pub const RING_THROW: f64 = 200.0;
+pub const RING_FUSE: f64 = 1.1;
+pub const RING_IN: f64 = 35.0;
+pub const RING_OUT: f64 = 85.0;
+/// Distanzzünder: Tempo, Radius, Lebenszeit, Strecke bis zur Scharfschaltung
+pub const DIST_SPEED: f64 = 420.0;
+pub const DIST_R: f64 = 4.0;
+pub const DIST_LIFE: f64 = 0.95;
+pub const DIST_ARM: f64 = 140.0;
+/// Kugelfresser: Tempo, Radius, Lebenszeit, Anzahl Kugeln, die er schluckt
+pub const EATER_SPEED: f64 = 150.0;
+pub const EATER_R: f64 = 8.0;
+pub const EATER_LIFE: f64 = 4.0;
+pub const EATER_MAX: u8 = 3;
+/// Entwaffnungsfächer: Reichweite und halber Öffnungswinkel
+pub const DISARM_RANGE: f64 = 110.0;
+pub const DISARM_HALF: f64 = PI / 8.0;
+/// Zeit, in der der Entwaffnete seine Waffe nicht wieder aufnehmen kann
+pub const DISARM_PICK_WAIT: f64 = 0.7;
+
+// Batch 2
+/// Zweitaktgeschoss: Tempo, Radius, Lebenszeit, Dauer der Markierung
+pub const DOUBLE_SPEED: f64 = 300.0;
+pub const DOUBLE_R: f64 = 4.0;
+pub const DOUBLE_LIFE: f64 = 3.0;
+pub const DOUBLE_MARK: f64 = 2.0;
+/// Eckenschuss: Tempo, Radius, Lebenszeit
+pub const CORNER_SPEED: f64 = 230.0;
+pub const CORNER_R: f64 = 4.0;
+pub const CORNER_LIFE: f64 = 3.0;
+/// Kettenzange: Reichweite, halber Winkel, Haltezeit
+pub const CHAIN_RANGE: f64 = 38.0;
+pub const CHAIN_HALF: f64 = PI / 6.0;
+pub const CHAIN_HOLD: f64 = 0.9;
+/// Schwenkhammer: Ausholzeit, Reichweite, halber Sektor
+pub const HAMMER_WINDUP: f64 = 0.45;
+pub const HAMMER_RANGE: f64 = 48.0;
+pub const HAMMER_HALF: f64 = PI / 3.0;
+/// Zündpause: Reichweite und Dauer des Einfrierens für normale Kugeln
+pub const PAUSE_RANGE: f64 = 110.0;
+pub const PAUSE_TIME: f64 = 0.9;
+/// Köderladung: wie weit geworfen, scharf nach, Lebenszeit, Zündzeit, Auslöse-Abstand, Radius
+pub const DECOY_THROW: f64 = 160.0;
+pub const DECOY_ARM: f64 = 0.8;
+pub const DECOY_LIFE: f64 = 7.0;
+pub const DECOY_FUSE: f64 = 0.35;
+pub const DECOY_SENSE: f64 = 14.0;
+pub const DECOY_BLAST: f64 = 55.0;
+/// Schattensalve: Vorwarnzeit, Tempo, Lebenszeit, Winkelabstand der drei Kugeln
+pub const SHADOW_FUSE: f64 = 0.9;
+pub const SHADOW_SPEED: f64 = 220.0;
+pub const SHADOW_LIFE: f64 = 1.5;
+pub const SHADOW_SPREAD: f64 = 0.26;
+/// Rohrverdreher: Vorwarnzeit und Reichweite
+pub const TWIST_FUSE: f64 = 0.5;
+pub const TWIST_RANGE: f64 = 100.0;
+
+// Batch 3
+/// Geschossweiche: Abstand vor dem Panzer, Dauer, Radius, höchstens so viele Kugeln
+pub const SWITCH_DIST: f64 = 120.0;
+pub const SWITCH_LIFE: f64 = 2.0;
+pub const SWITCH_R: f64 = 40.0;
+pub const SWITCH_MAX: u8 = 5;
+/// Nachbrennbild: Vorschau, Länge und halbe Breite der Linie
+pub const AFTERBURN_FUSE: f64 = 0.9;
+pub const AFTERBURN_LEN: f64 = 320.0;
+pub const AFTERBURN_HALF_W: f64 = 8.0;
+/// Richtungsdorn: Scharfschaltung, Lebenszeit, Reichweite über der Leiste
+pub const THORN_FUSE: f64 = 0.7;
+pub const THORN_LIFE: f64 = 8.0;
+pub const THORN_REACH: f64 = 25.0;
+/// Trittplatte: Radius, Lebenszeit, Anzahl Betritte bis zur Warnung, Vorwarnung, Explosionsradius
+pub const PLATE_R: f64 = 24.0;
+pub const PLATE_LIFE: f64 = 8.0;
+pub const PLATE_COUNT: u8 = 3;
+pub const PLATE_WARN: f64 = 0.7;
+pub const PLATE_BLAST: f64 = 65.0;
+/// Zangenmarkierung: Zielabstand, seitlicher Abstand der Zangen, Tempo, Radius, Vorlauf, Lebenszeit
+pub const PINCER_DIST: f64 = 240.0;
+pub const PINCER_LAT: f64 = 80.0;
+pub const PINCER_SPEED: f64 = 100.0;
+pub const PINCER_R: f64 = 25.0;
+pub const PINCER_FUSE: f64 = 0.7;
+pub const PINCER_LIFE: f64 = 6.0;
+/// Fadenkreuzfluch: Reichweite, Verfolgung, Einfrieren, Radius
+pub const CROSS_RANGE: f64 = 260.0;
+pub const CROSS_FOLLOW: f64 = 0.8;
+pub const CROSS_FREEZE: f64 = 0.65;
+pub const CROSS_R: f64 = 38.0;
+/// Kreuzpendel: Armlänge, Drehtempo, Vorwarnung, Lebenszeit, Trefferradius
+pub const PENDEL_LEN: f64 = 65.0;
+pub const PENDEL_SPEED: f64 = std::f64::consts::PI / 1.4;
+pub const PENDEL_WARN: f64 = 0.8;
+pub const PENDEL_LIFE: f64 = 5.8;
+pub const PENDEL_R: f64 = 10.0;
+
+// Batch 4
+/// Stillstandsurteil: Reichweite, Markierungsdauer, Stillstandszeit, Toleranz
+pub const VERDICT_RANGE: f64 = 220.0;
+pub const VERDICT_LIFE: f64 = 2.5;
+pub const VERDICT_STILL: f64 = 1.1;
+pub const VERDICT_TOL: f64 = 12.0;
+/// Geschossbrüter: Lebenszeit, Fangradius, Kugeln bis zum Zerbrechen
+pub const CATCHER_LIFE: f64 = 4.0;
+pub const CATCHER_R: f64 = 28.0;
+pub const CATCHER_MAX: u8 = 3;
+/// Konterklinge: Abwehrwinkel halb, Abwehrreichweite, Stoß
+pub const PARRY_HALF: f64 = std::f64::consts::PI * 35.0 / 180.0;
+pub const PARRY_REACH: f64 = 60.0;
+pub const LUNGE_REACH: f64 = 45.0;
+/// Rostwolke: Wurfweite, Lebenszeit, Radius, Feuerpause in der Wolke
+pub const RUST_THROW: f64 = 180.0;
+pub const RUST_LIFE: f64 = 3.0;
+pub const RUST_R: f64 = 55.0;
+pub const RUST_PAUSE: f64 = 1.2;
+/// Prallkissen: Wurfweite, Scharfschaltung, Lebenszeit, Radius, Stoß
+pub const CUSHION_THROW: f64 = 180.0;
+pub const CUSHION_ARM: f64 = 0.6;
+pub const CUSHION_LIFE: f64 = 5.6;
+pub const CUSHION_R: f64 = 28.0;
+pub const CUSHION_PUSH: f64 = 90.0;
+/// Kanonenschlag: Zündzeit, Splitter, Tempo
+pub const CRACKER_FUSE: f64 = 1.0;
+pub const CRACKER_N: usize = 3;
+pub const CRACKER_SPEED: f64 = 170.0;

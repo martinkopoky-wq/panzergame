@@ -87,6 +87,32 @@ items! {
     Sprinkler = "Kugelsprinkler", Weapon, 1;
     Hook = "Enterhaken", Weapon, 3;
     Destruct = "Selbstzerstörung", Weapon, 1;
+    Shear = "Geschossschere", Weapon, 2;
+    Ring = "Hohlringgranate", Weapon, 2;
+    Dist = "Distanzzünder", Weapon, 3;
+    Eater = "Kugelfresser", Weapon, 1;
+    Disarm = "Entwaffnungsfächer", Weapon, 1;
+    Double = "Zweitaktgeschoss", Weapon, 4;
+    Corner = "Eckenschuss", Weapon, 3;
+    Chain = "Kettenzange", Weapon, 1;
+    Hammer = "Schwenkhammer", Weapon, 2;
+    Pause = "Zündpause", Weapon, 1;
+    Decoy = "Köderladung", Weapon, 2;
+    Shadow = "Schattensalve", Weapon, 1;
+    Twist = "Rohrverdreher", Weapon, 1;
+    Switch = "Geschossweiche", Weapon, 2;
+    Afterburn = "Nachbrennbild", Weapon, 2;
+    Thorn = "Richtungsdorn", Weapon, 2;
+    Plate = "Trittplatte", Weapon, 2;
+    Pincer = "Zangenmarkierung", Weapon, 1;
+    Cross = "Fadenkreuzfluch", Weapon, 1;
+    Pendel = "Kreuzpendel", Weapon, 1;
+    Verdict = "Stillstandsurteil", Weapon, 1;
+    Catcher = "Geschossbrüter", Weapon, 1;
+    Parry = "Konterklinge", Weapon, 2;
+    Rust = "Rostwolke", Weapon, 2;
+    Cushion = "Prallkissen", Weapon, 2;
+    Cracker = "Kanonenschlag", Weapon, 2;
     Shield = "Schild", Buff, 0;
     Turbo = "Turbo", Buff, 6;
     Mini = "Schrumpfpilz", Buff, 10;
@@ -214,6 +240,12 @@ kinds! {
     Meteor = "meteor"; Gold = "gold"; Split = "split"; Wave = "wave"; Timebomb = "timebomb";
     Napalm = "napalm"; Burn = "burn"; Fence = "fence"; Sprinkler = "sprinkler"; Spb = "spb";
     Hook = "hook"; Destruct = "destruct";
+    Ring = "ring"; Dist = "dist"; Eater = "eater";
+    Double = "double"; Corner = "corner"; Chain = "chain"; Hammer = "hammer"; Decoy = "decoy";
+    Shadow = "shadow"; Twist = "twist";
+    Switch = "switch"; Afterburn = "afterburn"; Thorn = "thorn"; Plate = "plate";
+    Pincer = "pincer"; Cross = "cross"; Pendel = "pendel";
+    Verdict = "verdict"; Catcher = "catcher"; Parry = "parry"; Rust = "rust"; Cushion = "cushion"; Cracker = "cracker";
     // nur Trefferursachen
     Laser = "laser"; Zap = "zap"; Rail = "rail"; Prism = "prism"; Ram = "ram";
     Star = "star"; Giant = "giant"; Potato = "potato";
@@ -262,6 +294,22 @@ impl Kind {
                 | Fence
                 | Sprinkler
                 | Destruct
+                | Ring
+                | Chain
+                | Hammer
+                | Decoy
+                | Shadow
+                | Twist
+                | Afterburn
+                | Thorn
+                | Plate
+                | Cross
+                | Pendel
+                | Verdict
+                | Catcher
+                | Rust
+                | Cushion
+                | Cracker
         )
     }
 
@@ -283,6 +331,9 @@ impl Kind {
             Kind::Meteor => METEOR_BLAST,
             Kind::Timebomb => TIMEBOMB_BLAST,
             Kind::Destruct => DESTRUCT_BLAST,
+            Kind::Ring => RING_OUT,
+            Kind::Decoy => DECOY_BLAST,
+            Kind::Plate => PLATE_BLAST,
             _ => return None,
         })
     }
@@ -331,6 +382,29 @@ impl Kind {
             Sprinkler | Spb => Item::Sprinkler,
             Hook => Item::Hook,
             Destruct => Item::Destruct,
+            Ring => Item::Ring,
+            Dist => Item::Dist,
+            Eater => Item::Eater,
+            Double => Item::Double,
+            Corner => Item::Corner,
+            Chain => Item::Chain,
+            Hammer => Item::Hammer,
+            Decoy => Item::Decoy,
+            Shadow => Item::Shadow,
+            Twist => Item::Twist,
+            Switch => Item::Switch,
+            Afterburn => Item::Afterburn,
+            Thorn => Item::Thorn,
+            Plate => Item::Plate,
+            Pincer => Item::Pincer,
+            Cross => Item::Cross,
+            Pendel => Item::Pendel,
+            Verdict => Item::Verdict,
+            Catcher => Item::Catcher,
+            Parry => Item::Parry,
+            Rust => Item::Rust,
+            Cushion => Item::Cushion,
+            Cracker => Item::Cracker,
             Laser => Item::Laser,
             Zap => Item::Zap,
             Rail => Item::Rail,

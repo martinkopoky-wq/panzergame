@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Waffen und Effekte: Panzer</title>
+  <meta name="description" content="Alle Waffen und Effekte von Panzer, jeweils mit kurzem Video, wie sie wirken und wie man sie im Gefecht einsetzt.">
+  <meta name="theme-color" content="#0d0e12">
+  <link rel="icon" type="image/png" href="img/favicon.png">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="waffen.css">
+  <script src="waffen.js" defer></script>
+</head>
+<body class="docs">
+  <header class="bar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="index.html">Panzer</a>
+      <nav aria-label="Hauptnavigation">
+        <a href="index.html">Startseite</a>
+        <a href="waffen.html" aria-current="page">Waffen</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="docs-intro">
+      <h1>Waffen und Effekte</h1>
+      <p>Jede Kiste auf dem Labyrinth enthält eine Waffe oder einen Effekt. Hier steht, was sie macht, und jeweils ein kurzes Video, wie sie im Gefecht wirkt.</p>
+      <div class="docs-filter" role="group" aria-label="Filter">
+        <button type="button" data-filter="all" aria-pressed="true">Alle</button>
+        <button type="button" data-filter="Waffe">Waffen</button>
+        <button type="button" data-filter="Effekt">Effekte</button>
+        <button type="button" data-filter="Wundertüte">Wundertüte</button>
+      </div>
+    </section>
+    <ul class="docs-grid" id="docs-grid">
+      <li class="docs-empty">Die Liste lädt. Ohne Skript stehen die Einträge in <code>data/waffen.json</code>.</li>
+    </ul>
+  </main>
+</body>
+</html>

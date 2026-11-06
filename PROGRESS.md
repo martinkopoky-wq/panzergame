@@ -98,3 +98,10 @@ Getestet: Testsuite auf Linux, Windows und macOS in CI, .deb per `apt` auf Ubunt
 **Bekannt:** Der Wandbauer kann eine Lücke schmaler als den Panzer lassen, dort steckt man bis 3 px in der Wand (nur Optik, die Tests erlauben genau das).
 
 **Gelernt:** Roboto hat kein `→`, egui zeichnet dann ein Kästchen. macroquads `export_png` spiegelt vertikal. `hyprctl dispatch sendshortcut` mit `mouse:272` klickt, ist aber auf dem benutzten Desktop unzuverlässig: Wechselt jemand den Workspace, treffen Klick und `grim` etwas anderes. Fenstertests deshalb nur ohne Klick, ohne Fokus und nach Prüfung des sichtbaren Workspaces, Websites headless. `.btn { display: inline-flex }` überschreibt das `hidden`-Attribut.
+
+## 2026-11-06: Version 2.2.0 mit 26 neuen Waffen
+**Gemacht:** 26 neue Waffen in vier Batches, jede mit Test (`crates/core/tests/batch1–4_weapons.rs`). Waffen-Doku für Website (`website/waffen.html`) und Launcher (Knopf „WAFFEN“), Videos per `panzer showcase <waffe> <ordner>` aufgenommen und mit `scripts/encode_videos.py` kodiert, Vorschau mit `scripts/build_sprites.py`. Balance grob gemessen mit `crates/core/tests/balance.rs` (`--ignored`): Stillstandsurteil und die alten Lenkraketen sind stark, mehrere neue Waffen haben keine Abschüsse. Noch nicht angepasst, erst nach Tests mit Menschen.
+
+**Offen:** Balance nach Tests, Bots kennen die neuen Waffen noch nicht, Wandsaum/Scherenstrahl/Schweißlanze/Trägheitsfächer fehlen. Website im Browser noch nicht auf dem Layout geprüft.
+
+**Wichtig:** PROTO 11, alte Versionen (bis 2.1.2) sind nicht mehr kompatibel.

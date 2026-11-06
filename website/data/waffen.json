@@ -1,0 +1,922 @@
+[
+ {
+  "id": "Frag",
+  "name": "Splitterbombe",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Feuer schießt eine große Kugel. Ein zweiter Druck zündet sie, oder sie zündet nach 5 s von selbst. Dann fliegen 26 Splitter in alle Richtungen, auch auf dich.",
+  "video": "media/waffen/frag.mp4",
+  "poster": "media/waffen/frag.jpg"
+ },
+ {
+  "id": "Mg",
+  "name": "MG",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 25,
+  "text": "Feuer gedrückt halten: 25 Schuss mit Streuung.",
+  "video": "media/waffen/mg.mp4",
+  "poster": "media/waffen/mg.jpg"
+ },
+ {
+  "id": "Laser",
+  "name": "Laser",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Sofortiger Strahl, der bis zu 1400 px weit von Wänden abprallt. Mit gepunkteter Zielhilfe.",
+  "video": "media/waffen/laser.mp4",
+  "poster": "media/waffen/laser.jpg"
+ },
+ {
+  "id": "Rocket",
+  "name": "Lenkrakete",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Rakete mit Rauchspur. Sie fliegt kurz geradeaus und sucht dann den Weg durchs Labyrinth zum nächsten Gegner. Explodiert nach 10 s, wenn der Treibstoff alle ist.",
+  "video": "media/waffen/rocket.mp4",
+  "poster": "media/waffen/rocket.jpg"
+ },
+ {
+  "id": "Shotgun",
+  "name": "Schrotflinte",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zwei Schuss, jeder mit sieben Schrotkugeln im Fächer, die nach gut 1 s verschwinden.",
+  "video": "media/waffen/shotgun.mp4",
+  "poster": "media/waffen/shotgun.jpg"
+ },
+ {
+  "id": "Bouncy",
+  "name": "Flummi",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Pinker Ball, der mit jedem Abpraller schneller wird (bis fast 4×).",
+  "video": "media/waffen/bouncy.mp4",
+  "poster": "media/waffen/bouncy.jpg"
+ },
+ {
+  "id": "Mine",
+  "name": "Minen",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 3,
+  "text": "Drei Minen hinter dem Panzer. Nach 1 s sind sie scharf. Wer drüberfährt oder draufschießt, löst sie aus. Die eigenen Minen gehen auch hoch.",
+  "video": "media/waffen/mine.mp4",
+  "poster": "media/waffen/mine.jpg"
+ },
+ {
+  "id": "Swap",
+  "name": "Tauschkugel",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Trifft sie einen Panzer, tauschst du mit ihm den Platz. Ein zweiter Druck teleportiert dich zur Kugel.",
+  "video": "media/waffen/swap.mp4",
+  "poster": "media/waffen/swap.jpg"
+ },
+ {
+  "id": "Rang",
+  "name": "Bumerang",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Fliegt eine Kurve und kommt zurück. Fängst du ihn, kannst du ihn noch mal werfen.",
+  "video": "media/waffen/rang.mp4",
+  "poster": "media/waffen/rang.jpg"
+ },
+ {
+  "id": "Ice",
+  "name": "Eisstrahl",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Friert den getroffenen Panzer 3 s ein: kein Fahren, kein Schießen. Ein Schild fängt ihn ab.",
+  "video": "media/waffen/ice.mp4",
+  "poster": "media/waffen/ice.jpg"
+ },
+ {
+  "id": "Hole",
+  "name": "Schwarzes Loch",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Fliegt 1,2 s, öffnet sich dann für 4,5 s und zieht Panzer und Geschosse an. Alles in der Mitte wird verschluckt, auch durch den Schild und auch dich. Wände schützen.",
+  "video": "media/waffen/hole.mp4",
+  "poster": "media/waffen/hole.jpg"
+ },
+ {
+  "id": "Strike",
+  "name": "Luftschlag",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Markiert einen Punkt bis 280 px voraus. Ein Jet überfliegt das Ziel, 1,5 s später schlägt dort eine Bombe ein, die alles im Umkreis trifft.",
+  "video": "media/waffen/strike.mp4",
+  "poster": "media/waffen/strike.jpg"
+ },
+ {
+  "id": "Flame",
+  "name": "Flammenwerfer",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 70,
+  "text": "Feuer gedrückt halten: Flammenstrahl mit gut 100 px Reichweite, der an Wänden abprallt und Minen zündet. Die eigenen Flammen verbrennen dich nicht.",
+  "video": "media/waffen/flame.mp4",
+  "poster": "media/waffen/flame.jpg"
+ },
+ {
+  "id": "Zap",
+  "name": "Blitz",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Trifft sofort den nächsten Panzer vor dir (bis 250 px, freie Sicht) und springt auf bis zu zwei weitere über.",
+  "video": "media/waffen/zap.mp4",
+  "poster": "media/waffen/zap.jpg"
+ },
+ {
+  "id": "Rail",
+  "name": "Railgun",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Feuer gedrückt halten lädt auf (knapp 1 s). Loslassen feuert einen Strahl, der durch bis zu zwei Wände schlägt und alle Panzer in der Linie trifft.",
+  "video": "media/waffen/rail.mp4",
+  "poster": "media/waffen/rail.jpg"
+ },
+ {
+  "id": "Rc",
+  "name": "Fernlenkrakete",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Der Panzer bleibt stehen, Links und Rechts lenken die Rakete (6 s Treibstoff). An einer Wand oder einem Panzer geht sie hoch, ein zweiter Druck zündet sie sofort.",
+  "video": "media/waffen/rc.mp4",
+  "poster": "media/waffen/rc.jpg"
+ },
+ {
+  "id": "Sentry",
+  "name": "Geschützturm",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Stellt einen Turm hinter den Panzer, der 9 s lang auf Gegner mit freier Sicht schießt. Seine Kugeln treffen auch dich. Ein Treffer zerstört ihn.",
+  "video": "media/waffen/sentry.mp4",
+  "poster": "media/waffen/sentry.jpg"
+ },
+ {
+  "id": "Wall",
+  "name": "Wandbauer",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 3,
+  "text": "Drei Wandstücke quer hinter den Panzer, die nach 10 s zerfallen. Sie blocken Kugeln und Wege.",
+  "video": "media/waffen/wall.mp4",
+  "poster": "media/waffen/wall.jpg"
+ },
+ {
+  "id": "Oil",
+  "name": "Ölfass",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zwei Ölflecken hinter dem Panzer. Wer drüberfährt, rutscht. Feuer oder eine Explosion zündet das Öl, es brennt 2,5 s und erwischt jeden darin.",
+  "video": "media/waffen/oil.mp4",
+  "poster": "media/waffen/oil.jpg"
+ },
+ {
+  "id": "Sticky",
+  "name": "Klebebombe",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zwei Schuss. Die Bombe bleibt an Wand oder Panzer kleben und geht 1,5 s später hoch.",
+  "video": "media/waffen/sticky.mp4",
+  "poster": "media/waffen/sticky.jpg"
+ },
+ {
+  "id": "Gl",
+  "name": "Granatwerfer",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 3,
+  "text": "Drei Granaten, die über Wände fliegen und 240 px voraus explodieren. Mit Zielhilfe.",
+  "video": "media/waffen/gl.mp4",
+  "poster": "media/waffen/gl.jpg"
+ },
+ {
+  "id": "Swarm",
+  "name": "Raketenschwarm",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Fünf kleine Lenkraketen im Fächer.",
+  "video": "media/waffen/swarm.mp4",
+  "poster": "media/waffen/swarm.jpg"
+ },
+ {
+  "id": "Saw",
+  "name": "Sägeblatt",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Prallt bis zu siebenmal ab und sägt durch jeden Panzer auf dem Weg.",
+  "video": "media/waffen/saw.mp4",
+  "poster": "media/waffen/saw.jpg"
+ },
+ {
+  "id": "Plasma",
+  "name": "Plasmakugel",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Schmilzt sich durch bis zu drei Wände, die danach weg sind, und trifft jeden auf dem Weg.",
+  "video": "media/waffen/plasma.mp4",
+  "poster": "media/waffen/plasma.jpg"
+ },
+ {
+  "id": "Fw",
+  "name": "Feuerwerk",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zwei Raketen, die nach 0,7 s oder an einer Wand in 16 bunte Funken zerplatzen.",
+  "video": "media/waffen/fw.mp4",
+  "poster": "media/waffen/fw.jpg"
+ },
+ {
+  "id": "Push",
+  "name": "Druckwelle",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zwei Stöße: schiebt Panzer im Kegel vor dir weg und lenkt Geschosse um, die dann dir gehören.",
+  "video": "media/waffen/push.mp4",
+  "poster": "media/waffen/push.jpg"
+ },
+ {
+  "id": "Spider",
+  "name": "Spinnenmine",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zwei Spinnen hinter dem Panzer. Sobald ein Gegner in die Nähe kommt, krabbeln sie zu ihm und explodieren.",
+  "video": "media/waffen/spider.mp4",
+  "poster": "media/waffen/spider.jpg"
+ },
+ {
+  "id": "Ram",
+  "name": "Rammbock",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "4 s lang schneller. Wer gerammt wird, ist erledigt.",
+  "video": "media/waffen/ram.mp4",
+  "poster": "media/waffen/ram.jpg"
+ },
+ {
+  "id": "Nova",
+  "name": "Kugelring",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Zwölf Kugeln auf einmal, rundherum.",
+  "video": "media/waffen/nova.mp4",
+  "poster": "media/waffen/nova.jpg"
+ },
+ {
+  "id": "Seek",
+  "name": "Suchkugel",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 3,
+  "text": "Drei Schuss, die zum nächsten sichtbaren Panzer lenken, nach 1 s auch zu dir.",
+  "video": "media/waffen/seek.mp4",
+  "poster": "media/waffen/seek.jpg"
+ },
+ {
+  "id": "Phase",
+  "name": "Phasenkugel",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zwei Schuss geradeaus durch alle Wände.",
+  "video": "media/waffen/phase.mp4",
+  "poster": "media/waffen/phase.jpg"
+ },
+ {
+  "id": "Cannon",
+  "name": "Kanonenkugel",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Dicke Kugel, die durch Schilde und Panzer geht und zweimal abprallt.",
+  "video": "media/waffen/cannon.mp4",
+  "poster": "media/waffen/cannon.jpg"
+ },
+ {
+  "id": "Arty",
+  "name": "Artillerie",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Drei Einschläge hintereinander vor dir. Wände spielen keine Rolle.",
+  "video": "media/waffen/arty.mp4",
+  "poster": "media/waffen/arty.jpg"
+ },
+ {
+  "id": "Trap",
+  "name": "Bärenfalle",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zwei Fallen hinter dem Panzer. Wer reinfährt, auch du, hängt 4 s fest.",
+  "video": "media/waffen/trap.mp4",
+  "poster": "media/waffen/trap.jpg"
+ },
+ {
+  "id": "Jump",
+  "name": "Sprungdüse",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 3,
+  "text": "Drei Sprünge ein Stück nach vorne, auch über Wände.",
+  "video": "media/waffen/jump.mp4",
+  "poster": "media/waffen/jump.jpg"
+ },
+ {
+  "id": "Frost",
+  "name": "Frostnova",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Friert alle Panzer im Umkreis von 130 px 3 s ein.",
+  "video": "media/waffen/frost.mp4",
+  "poster": "media/waffen/frost.jpg"
+ },
+ {
+  "id": "Orbit",
+  "name": "Orbitallaser",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Markiert einen Punkt 240 px voraus. 1,6 s später wandert dort ein Strahl von oben weiter und trifft alles, auch durch Schilde.",
+  "video": "media/waffen/orbit.mp4",
+  "poster": "media/waffen/orbit.jpg"
+ },
+ {
+  "id": "Prism",
+  "name": "Prisma",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Laserstrahl, der sich an der ersten Wand in drei Strahlen aufspaltet.",
+  "video": "media/waffen/prism.mp4",
+  "poster": "media/waffen/prism.jpg"
+ },
+ {
+  "id": "Split",
+  "name": "Querschläger",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Kugel, die sich bei den ersten drei Abprallern jeweils verdoppelt: bis zu acht Kugeln, die auch dich treffen.",
+  "video": "media/waffen/split.mp4",
+  "poster": "media/waffen/split.jpg"
+ },
+ {
+  "id": "Wave",
+  "name": "Schlangenkugel",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 3,
+  "text": "Drei Schuss, die in Wellenlinien fliegen und schwer vorherzusehen sind.",
+  "video": "media/waffen/wave.mp4",
+  "poster": "media/waffen/wave.jpg"
+ },
+ {
+  "id": "Timebomb",
+  "name": "Zeitbombe",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zwei Bomben hinter dem Panzer. Sie ticken 3,5 s und reißen alles im Umkreis mit, auch dich.",
+  "video": "media/waffen/timebomb.mp4",
+  "poster": "media/waffen/timebomb.jpg"
+ },
+ {
+  "id": "Napalm",
+  "name": "Napalm",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zwei Schuss. Platzt an Wand, Panzer oder nach gut 1 s und hinterlässt eine Feuerfläche, die 4,5 s brennt. Wände schützen.",
+  "video": "media/waffen/napalm.mp4",
+  "poster": "media/waffen/napalm.jpg"
+ },
+ {
+  "id": "Fence",
+  "name": "Laserschranke",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zwei Schranken quer hinter dem Panzer, von Wand zu Wand. Nach 0,8 s tödlich für jeden, auch für dich. 6 s lang aktiv.",
+  "video": "media/waffen/fence.mp4",
+  "poster": "media/waffen/fence.jpg"
+ },
+ {
+  "id": "Sprinkler",
+  "name": "Kugelsprinkler",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Ein Gerät hinter dem Panzer, das sich dreht und gut 3 s lang Kugeln in zwei Richtungen spuckt.",
+  "video": "media/waffen/sprinkler.mp4",
+  "poster": "media/waffen/sprinkler.jpg"
+ },
+ {
+  "id": "Hook",
+  "name": "Enterhaken",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 3,
+  "text": "Drei Schuss. In einer Wand zieht er dich hin. An einem Panzer zieht er den Gegner zu dir und friert ihn 1,4 s ein.",
+  "video": "media/waffen/hook.mp4",
+  "poster": "media/waffen/hook.jpg"
+ },
+ {
+  "id": "Destruct",
+  "name": "Selbstzerstörung",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Nach 1,2 s fliegst du in die Luft und reißt alles im Umkreis von 120 px mit. Nur ein Schild oder der Superstern rettet dich.",
+  "video": "media/waffen/destruct.mp4",
+  "poster": "media/waffen/destruct.jpg"
+ },
+ {
+  "id": "Shear",
+  "name": "Geschossschere",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Schneidet im Kegel vor dem Panzer (150 px, 60°) bis zu sechs gegnerische Kugeln ab. Deine eigenen bleiben.",
+  "video": "media/waffen/shear.mp4",
+  "poster": "media/waffen/shear.jpg"
+ },
+ {
+  "id": "Ring",
+  "name": "Hohlringgranate",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Wirft den Ring 200 px voraus. Nach 1,1 s explodiert er und trifft nur Panzer zwischen 35 und 85 px vom Zentrum. Im Zentrum bist du sicher.",
+  "video": "media/waffen/ring.mp4",
+  "poster": "media/waffen/ring.jpg"
+ },
+ {
+  "id": "Dist",
+  "name": "Distanzzünder",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 3,
+  "text": "Eine Kugel mit 400 px Reichweite. Erst nach 140 px Flugstrecke ist sie scharf. Auf kurze Distanz wirkungslos.",
+  "video": "media/waffen/dist.mp4",
+  "poster": "media/waffen/dist.jpg"
+ },
+ {
+  "id": "Eater",
+  "name": "Kugelfresser",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Schluckt bis zu drei normale gegnerische Kugeln. Dabei wird er größer und etwas langsamer.",
+  "video": "media/waffen/eater.mp4",
+  "poster": "media/waffen/eater.jpg"
+ },
+ {
+  "id": "Disarm",
+  "name": "Entwaffnungsfächer",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Kegel vor dem Panzer, 110 px weit. Gegner darin verlieren ihre Waffe. Sie liegt als Kiste am Boden und kann 0,7 s lang nicht aufgenommen werden.",
+  "video": "media/waffen/disarm.mp4",
+  "poster": "media/waffen/disarm.jpg"
+ },
+ {
+  "id": "Double",
+  "name": "Zweitaktgeschoss",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 4,
+  "text": "Ein Treffer markiert den Gegner nur, er bleibt 2 s lang markiert. Trifft derselbe Schütze in dieser Zeit noch einmal, ist er erledigt. Der Erste schadet nicht.",
+  "video": "media/waffen/double.mp4",
+  "poster": "media/waffen/double.jpg"
+ },
+ {
+  "id": "Corner",
+  "name": "Eckenschuss",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 3,
+  "text": "Der zweite Feuerdruck biegt das Geschoss einmal um 90° nach rechts ab. So kommt man um Ecken herum.",
+  "video": "media/waffen/corner.mp4",
+  "poster": "media/waffen/corner.jpg"
+ },
+ {
+  "id": "Chain",
+  "name": "Kettenzange",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Packt den Gegner im Frontwinkel von 30° innerhalb von 38 px. Beide stehen 0,9 s still, danach trifft die Zange das Opfer, solange der Angreifer noch lebt.",
+  "video": "media/waffen/chain.mp4",
+  "poster": "media/waffen/chain.jpg"
+ },
+ {
+  "id": "Hammer",
+  "name": "Schwenkhammer",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Holt 0,45 s aus und schlägt dann durch einen Sektor von 120° bis 48 px vor dem Panzer. Hinter dem Panzer bist du sicher.",
+  "video": "media/waffen/hammer.mp4",
+  "poster": "media/waffen/hammer.jpg"
+ },
+ {
+  "id": "Pause",
+  "name": "Zündpause",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Friert alle normalen Kugeln im Umkreis von 110 px für 0,9 s ein. Sie stehen still und sind dabei harmlos. Danach fliegen sie weiter.",
+  "video": "media/waffen/pause.mp4",
+  "poster": "media/waffen/pause.jpg"
+ },
+ {
+  "id": "Decoy",
+  "name": "Köderladung",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Wirft eine Ladung 160 px voraus, die nach 0,8 s scharf wird. Fliegt eine gegnerische Kugel nah genug vorbei, zündet sie nach 0,35 s und reißt alles im Umkreis von 55 px mit.",
+  "video": "media/waffen/decoy.mp4",
+  "poster": "media/waffen/decoy.jpg"
+ },
+ {
+  "id": "Shadow",
+  "name": "Schattensalve",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Hinterlässt eine Silhouette auf der Stelle, an der du stehst. Nach 0,9 s feuert sie drei Kugeln in deine alte Blickrichtung, auch wenn du dich schon bewegt hast.",
+  "video": "media/waffen/shadow.mp4",
+  "poster": "media/waffen/shadow.jpg"
+ },
+ {
+  "id": "Twist",
+  "name": "Rohrverdreher",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Nach 0,5 s Vorwarnung drehen sich alle Panzer im Umkreis von 100 px einmal um 90°. Wer gerade zielt, zielt danach daneben.",
+  "video": "media/waffen/twist.mp4",
+  "poster": "media/waffen/twist.jpg"
+ },
+ {
+  "id": "Switch",
+  "name": "Geschossweiche",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Stellt eine Weiche 120 px voraus auf. Gegnerische Kugeln, die in ihren Bereich fliegen, werden um 90° nach links abgelenkt. Höchstens fünf Kugeln, 2 s lang.",
+  "video": "media/waffen/switch.mp4",
+  "poster": "media/waffen/switch.jpg"
+ },
+ {
+  "id": "Afterburn",
+  "name": "Nachbrennbild",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Zeichnet eine Linie von 320 px in deine Blickrichtung. Nach 0,9 s trifft sie jeden Panzer, der dann noch auf der Linie steht. Wer ausweicht, ist sicher.",
+  "video": "media/waffen/afterburn.mp4",
+  "poster": "media/waffen/afterburn.jpg"
+ },
+ {
+  "id": "Thorn",
+  "name": "Richtungsdorn",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Legt eine Leiste hinter den Panzer, die nach 0,7 s scharf wird. Nur Gegner, die von der Pfeilseite darüberfahren, lösen sie aus. Der Schütze kann drüberfahren, ohne dass etwas passiert.",
+  "video": "media/waffen/thorn.mp4",
+  "poster": "media/waffen/thorn.jpg"
+ },
+ {
+  "id": "Plate",
+  "name": "Trittplatte",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Eine Platte hinter dem Panzer zählt jedes Betreten. Beim dritten Betreten warnt sie 0,7 s lang und explodiert dann im Umkreis von 65 px. Ohne Betreten bleibt sie acht Sekunden liegen.",
+  "video": "media/waffen/plate.mp4",
+  "poster": "media/waffen/plate.jpg"
+ },
+ {
+  "id": "Pincer",
+  "name": "Zangenmarkierung",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Markiert einen Punkt 240 px voraus. Zwei Zangen starten links und rechts davon und laufen zur Mitte. Wer dort steht, wird getroffen.",
+  "video": "media/waffen/pincer.mp4",
+  "poster": "media/waffen/pincer.jpg"
+ },
+ {
+  "id": "Cross",
+  "name": "Fadenkreuzfluch",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Markiert einen sichtbaren Gegner im Umkreis von 260 px mit einem Fadenkreuz. Es folgt ihm 0,8 s, friert dann ein und trifft nach weiteren 0,65 s alles im Kreis.",
+  "video": "media/waffen/cross.mp4",
+  "poster": "media/waffen/cross.jpg"
+ },
+ {
+  "id": "Pendel",
+  "name": "Kreuzpendel",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Ein Arm von 65 px dreht sich um einen Sockel vor dem Panzer. Nach 0,8 s Vorwarnung trifft er jeden, der ihm in den Weg kommt, außer dem Schützen. Der Arm bleibt etwa 5 s.",
+  "video": "media/waffen/pendel.mp4",
+  "poster": "media/waffen/pendel.jpg"
+ },
+ {
+  "id": "Verdict",
+  "name": "Stillstandsurteil",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Markiert den nächsten sichtbaren Gegner im Umkreis von 220 px. Bleibt er 1,1 s lang stehen, trifft das Urteil. Bewegt er sich, beginnt die Zeit von vorn. Die Markierung hält 2,5 s.",
+  "video": "media/waffen/verdict.mp4",
+  "poster": "media/waffen/verdict.jpg"
+ },
+ {
+  "id": "Catcher",
+  "name": "Geschossbrüter",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 1,
+  "text": "Stellt einen Fänger hinter den Panzer. Er fängt bis zu drei gegnerische Kugeln im Umkreis von 28 px auf und schickt sie zurück zum Schützen. Der Fänger hält 4 s.",
+  "video": "media/waffen/catcher.mp4",
+  "poster": "media/waffen/catcher.jpg"
+ },
+ {
+  "id": "Parry",
+  "name": "Konterklinge",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Wehrt die erste gegnerische Kugel im Frontwinkel von 70° ab, die nah genug ist. Nur dann stößt die Klinge 45 px weit nach vorn. Ohne abgewehrte Kugel passiert nichts.",
+  "video": "media/waffen/parry.mp4",
+  "poster": "media/waffen/parry.jpg"
+ },
+ {
+  "id": "Rust",
+  "name": "Rostwolke",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Wirft eine Wolke 180 px voraus, die 3 s bleibt. Wer in der Wolke steht, kann nicht schießen, und danach noch 1,2 s lang nicht.",
+  "video": "media/waffen/rust.mp4",
+  "poster": "media/waffen/rust.jpg"
+ },
+ {
+  "id": "Cushion",
+  "name": "Prallkissen",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Wirft ein Kissen 180 px voraus. Nach 0,6 s ist es scharf und hält 5 s. Wer neu hineinfährt, wird um 90 px weggeschoben.",
+  "video": "media/waffen/cushion.mp4",
+  "poster": "media/waffen/cushion.jpg"
+ },
+ {
+  "id": "Cracker",
+  "name": "Kanonenschlag",
+  "class": "Weapon",
+  "group": "Waffe",
+  "ammo": 2,
+  "text": "Legt einen Kanonenschlag hinter den Panzer. Nach 1 s zündet er und wirft drei kleine Splitter in zufällige Richtungen.",
+  "video": "media/waffen/cracker.mp4",
+  "poster": "media/waffen/cracker.jpg"
+ },
+ {
+  "id": "Shield",
+  "name": "Schild",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 0,
+  "text": "Fängt 8 s lang einen Treffer ab und blinkt kurz vor Ablauf.",
+  "video": "media/waffen/shield.mp4",
+  "poster": "media/waffen/shield.jpg"
+ },
+ {
+  "id": "Turbo",
+  "name": "Turbo",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 6,
+  "text": "6 s lang schneller fahren und lenken.",
+  "video": "media/waffen/turbo.mp4",
+  "poster": "media/waffen/turbo.jpg"
+ },
+ {
+  "id": "Mini",
+  "name": "Schrumpfpilz",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 10,
+  "text": "10 s lang nur halb so groß. Schwerer zu treffen, etwas schneller.",
+  "video": "media/waffen/mini.mp4",
+  "poster": "media/waffen/mini.jpg"
+ },
+ {
+  "id": "Ghost",
+  "name": "Geist",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 5,
+  "text": "5 s lang durch Wände fahren. Solange du in einer Wand steckst, kannst du nicht schießen.",
+  "video": "media/waffen/ghost.mp4",
+  "poster": "media/waffen/ghost.jpg"
+ },
+ {
+  "id": "Invis",
+  "name": "Tarnkappe",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 8,
+  "text": "8 s lang für die anderen unsichtbar. Lenkraketen finden dich nicht.",
+  "video": "media/waffen/invis.mp4",
+  "poster": "media/waffen/invis.jpg"
+ },
+ {
+  "id": "Confuse",
+  "name": "Verwirrung",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 6,
+  "text": "Alle anderen haben 6 s lang vertauschte Steuerung: vorne und hinten, links und rechts.",
+  "video": "media/waffen/confuse.mp4",
+  "poster": "media/waffen/confuse.jpg"
+ },
+ {
+  "id": "Mirror",
+  "name": "Spiegelschild",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 7,
+  "text": "7 s lang prallen Kugeln an dir ab und fliegen zum Schützen zurück.",
+  "video": "media/waffen/mirror.mp4",
+  "poster": "media/waffen/mirror.jpg"
+ },
+ {
+  "id": "Star",
+  "name": "Superstern",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 6,
+  "text": "6 s lang unverwundbar, außer gegen Schwarzes Loch und Atombombe. Wen du anfährst, ist erledigt.",
+  "video": "media/waffen/star.mp4",
+  "poster": "media/waffen/star.jpg"
+ },
+ {
+  "id": "Giant",
+  "name": "Riesenpilz",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 9,
+  "text": "9 s lang anderthalbmal so groß und etwas langsamer. Kleinere Panzer werden zertrampelt.",
+  "video": "media/waffen/giant.mp4",
+  "poster": "media/waffen/giant.jpg"
+ },
+ {
+  "id": "Rapid",
+  "name": "Schnellfeuer",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 8,
+  "text": "8 s lang doppelt so viele Kugeln und doppelt so schnell nachschießen.",
+  "video": "media/waffen/rapid.mp4",
+  "poster": "media/waffen/rapid.jpg"
+ },
+ {
+  "id": "Extra",
+  "name": "Ersatzteil",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 999,
+  "text": "Rettet einmal vor einem Treffer, sogar vor der Atombombe, und hält die ganze Runde.",
+  "video": "media/waffen/extra.mp4",
+  "poster": "media/waffen/extra.jpg"
+ },
+ {
+  "id": "Slow",
+  "name": "Lähmung",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 5,
+  "text": "Alle anderen fahren 5 s lang nur halb so schnell.",
+  "video": "media/waffen/slow.mp4",
+  "poster": "media/waffen/slow.jpg"
+ },
+ {
+  "id": "Twin",
+  "name": "Doppellauf",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 10,
+  "text": "10 s lang zwei Kugeln pro Schuss.",
+  "video": "media/waffen/twin.mp4",
+  "poster": "media/waffen/twin.jpg"
+ },
+ {
+  "id": "Tp",
+  "name": "Teleporter",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 0,
+  "text": "Bringt dich sofort an die Stelle, die am weitesten von allen anderen weg ist.",
+  "video": "media/waffen/tp.mp4",
+  "poster": "media/waffen/tp.jpg"
+ },
+ {
+  "id": "Disco",
+  "name": "Discokugel",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 0,
+  "text": "Alle Panzer tauschen reihum die Plätze.",
+  "video": "media/waffen/disco.mp4",
+  "poster": "media/waffen/disco.jpg"
+ },
+ {
+  "id": "Radar",
+  "name": "Radar",
+  "class": "Buff",
+  "group": "Effekt",
+  "ammo": 12,
+  "text": "12 s lang siehst du getarnte Panzer, Minen, Fallen und Spinnen.",
+  "video": "media/waffen/radar.mp4",
+  "poster": "media/waffen/radar.jpg"
+ },
+ {
+  "id": "Nuke",
+  "name": "Atombombe",
+  "class": "MysteryWeapon",
+  "group": "Wundertüte",
+  "ammo": 1,
+  "text": "Nur aus der Wundertüte. Die Bombe rollt aus und geht nach 4 s mit 230 px Radius hoch. Sie geht durch Wände und Schilde und sprengt die Wände in der Nähe weg. Die Außenwände bleiben.",
+  "video": "media/waffen/nuke.mp4",
+  "poster": "media/waffen/nuke.jpg"
+ },
+ {
+  "id": "Gold",
+  "name": "Goldene Kugel",
+  "class": "MysteryWeapon",
+  "group": "Wundertüte",
+  "ammo": 1,
+  "text": "Nur aus der Wundertüte. Eine schnelle Kugel, die durch Schilde und durch jeden Panzer auf dem Weg geht.",
+  "video": "media/waffen/gold.mp4",
+  "poster": "media/waffen/gold.jpg"
+ },
+ {
+  "id": "Potato",
+  "name": "Heiße Kartoffel",
+  "class": "MysteryBuff",
+  "group": "Wundertüte",
+  "ammo": 0,
+  "text": "Nur aus der Wundertüte. Die Kartoffel explodiert nach 10 s. Fährst du einen anderen Panzer an, hat er sie, mit mindestens 3 s Restzeit.",
+  "video": "media/waffen/potato.mp4",
+  "poster": "media/waffen/potato.jpg"
+ },
+ {
+  "id": "Meteor",
+  "name": "Meteoritenschauer",
+  "class": "MysteryBuff",
+  "group": "Wundertüte",
+  "ammo": 0,
+  "text": "Nur aus der Wundertüte. Neun Einschläge irgendwo im Labyrinth, auch bei dir.",
+  "video": "media/waffen/meteor.mp4",
+  "poster": "media/waffen/meteor.jpg"
+ }
+]

@@ -277,6 +277,42 @@ impl Renderer {
                     draw_circle(x, y, 1.5, col(c));
                 }
                 Kind::Destruct => self.draw_destruct(g, x, y, age, life),
+                Kind::Double => self.ball(g, sid, x, y, DOUBLE_R as f32, [255, 120, 60], true),
+                Kind::Corner => self.ball(g, sid, x, y, CORNER_R as f32, [120, 220, 255], true),
+                Kind::Chain => {
+                    self.ball(g, sid, x, y, 4.0, [200, 200, 220], true);
+                }
+                Kind::Hammer => g.lit_ring(col([255, 200, 80]), x, y, HAMMER_RANGE as f32, 1.5),
+                Kind::Decoy => self.ball(g, sid, x, y, 6.0, [255, 230, 80], true),
+                Kind::Shadow => self.ball(g, sid, x, y, 9.0, [30, 30, 40], false),
+                Kind::Twist => g.lit_ring(col([255, 120, 255]), x, y, TWIST_RANGE as f32, 1.0),
+                Kind::Switch => g.lit_ring(col([120, 200, 255]), x, y, SWITCH_R as f32, 1.0),
+                Kind::Afterburn => {
+                    let a = p.ang as f32;
+                    let (x2, y2) = (x + a.cos() * AFTERBURN_LEN as f32, y + a.sin() * AFTERBURN_LEN as f32);
+                    draw_line(x, y, x2, y2, 3.0, col([255, 120, 40]));
+                }
+                Kind::Thorn => g.lit_ring(col([200, 200, 210]), x, y, 8.0, 2.0),
+                Kind::Plate => g.lit_ring(col([255, 200, 80]), x, y, PLATE_R as f32, 1.0),
+                Kind::Pincer => self.ball(g, sid, x, y, 6.0, [255, 140, 60], true),
+                Kind::Cross => g.lit_ring(col([255, 70, 70]), x, y, CROSS_R as f32, 1.5),
+                Kind::Verdict => {
+                    g.lit_ring(col([255, 80, 80]), x, y, 12.0, 1.2);
+                }
+                Kind::Catcher => g.lit_ring(col([200, 170, 255]), x, y, CATCHER_R as f32, 1.5),
+                Kind::Rust => g.lit_ring(col([170, 110, 60]), x, y, RUST_R as f32, 1.5),
+                Kind::Cushion => g.lit_ring(col([90, 200, 170]), x, y, CUSHION_R as f32, 1.5),
+                Kind::Cracker => self.ball(g, sid, x, y, 4.0, [255, 200, 60], true),
+                Kind::Pendel => {
+                    let a = p.ang as f32;
+                    draw_line(x, y, x + a.cos() * PENDEL_LEN as f32, y + a.sin() * PENDEL_LEN as f32, 3.0, col([200, 200, 220]));
+                }
+                Kind::Ring => {
+                    g.lit_ring(col([255, 170, 60]), x, y, RING_OUT as f32, 1.0);
+                    g.lit_ring(col([255, 170, 60]), x, y, RING_IN as f32, 1.0);
+                }
+                Kind::Dist => self.ball(g, sid, x, y, DIST_R as f32, c, true),
+                Kind::Eater => self.ball(g, sid, x, y, EATER_R as f32, [150, 60, 200], true),
                 Kind::Nv | Kind::Sb | Kind::Spk | Kind::Spb => {
                     let cc = if p.kind == Kind::Spk { FW_COLORS[sid as usize % FW_COLORS.len()] } else { c };
                     self.ball(g, sid, x, y, if p.kind == Kind::Spk { 2.0 } else { 3.0 }, cc, true);

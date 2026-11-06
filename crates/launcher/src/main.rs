@@ -83,6 +83,46 @@ struct Launcher {
     icon: Option<TextureHandle>,
     close_on_play: bool,
     game: Option<Child>,
+    /// Waffen-Doku statt Startbild
+    show_docs: bool,
+    docs: Option<Docs>,
+}
+
+/// Eine Waffe oder ein Effekt aus website/data/waffen.json
+struct DocItem {
+    name: String,
+    group: String,
+    text: String,
+    ammo: i64,
+}
+
+/// Doku: Sprite-Blatt mit einer Zeile pro Waffe (12 Bilder der Aufnahme)
+struct Docs {
+    /// Zeilen-Texturen, erst beim ersten Anzeigen geladen
+    sheets: Vec<Option<Vec<TextureHandle>>>,
+    rows: usize,
+    items: Vec<DocItem>,
+    filter: &'static str,
+}
+
+const DOCS_JSON: &str = include_str!("../../../website/data/waffen.json");
+mod waffen_rows;
+
+fn load_docs(ctx: &egui::Context) -> Option<Docs> {
+    let v: serde_json::Value = serde_json::from_str(DOCS_JSON).ok()?;
+    let items = v
+        .as_array()?
+        .iter()
+        .map(|i| DocItem {
+            name: i["name"].as_str().unwrap_or("").to_string(),
+            group: i["group"].as_str().unwrap_or("").to_string(),
+            text: i["text"].as_str().unwrap_or("").to_string(),
+            ammo: i["ammo"].as_i64().unwrap_or(0),
+        })
+        .collect::<Vec<_>>();
+    let rows = items.len();
+    let _ = ctx;
+    Some(Docs { sheets: (0..rows).map(|_| None).collect(), rows, items, filter: "Alle" })
 }
 
 fn load_png(ctx: &egui::Context, name: &str, bytes: &[u8]) -> Option<TextureHandle> {
@@ -131,6 +171,9 @@ impl Launcher {
             icon: load_png(ctx, "icon", include_bytes!("../../../assets/icon/panzer-128.png")),
             close_on_play,
             game: None,
+            // --docs startet direkt in der Waffen-Doku (zum Testen und für Links)
+            show_docs: std::env::args().any(|a| a == "--docs"),
+            docs: None,
         };
         l.check(ctx.clone());
         l
@@ -332,6 +375,80 @@ fn small_button(ui: &mut egui::Ui, text: &str) -> bool {
     .clicked()
 }
 
+impl Launcher {
+    /// Waffen-Doku: Zeile pro Waffe, animiert aus dem Sprite-Blatt
+    fn docs_ui(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        if self.docs.is_none() {
+            self.docs = load_docs(&ctx);
+        }
+        let Some(docs) = self.docs.as_mut() else {
+            ui.label(RichText::new("Die Waffen-Doku konnte nicht geladen werden.").color(RED));
+            return;
+        };
+        ui.horizontal(|ui| {
+            for f in ["Alle", "Waffe", "Effekt", "Wundertüte"] {
+                if ui.selectable_label(docs.filter == f, f).clicked() {
+                    docs.filter = f;
+                }
+            }
+        });
+        ui.add_space(8.0);
+        let frame = ((ui.input(|i| i.time) * waffen_rows::FPS) as usize) % waffen_rows::COLS;
+        ctx.request_repaint_after(Duration::from_millis(80));
+        let filter = docs.filter;
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            for (row, item) in docs.items.iter().enumerate() {
+                if filter != "Alle" && item.group != filter {
+                    continue;
+                }
+                // Zeile erst bei Bedarf dekodieren und als Textur halten
+                // Eine Zeile wird beim ersten Anzeigen in ihre Einzelbilder zerlegt (je ein Texturbild)
+                if docs.sheets[row].is_none() {
+                    if let Some(bytes) = waffen_rows::ROWS.get(row) {
+                        if let Ok(img) = image::load_from_memory(bytes) {
+                            let img = img.to_rgba8();
+                            let (fw, fh) = (img.width() / waffen_rows::COLS as u32, img.height());
+                            let frames: Vec<TextureHandle> = (0..waffen_rows::COLS as u32)
+                                .map(|c| {
+                                    let sub = image::imageops::crop_imm(&img, c * fw, 0, fw, fh).to_image();
+                                    let size = [fw as usize, fh as usize];
+                                    let color = egui::ColorImage::from_rgba_unmultiplied(size, sub.as_raw());
+                                    ctx.load_texture(format!("waffe{row}_{c}"), color, TextureOptions::LINEAR)
+                                })
+                                .collect();
+                            docs.sheets[row] = Some(frames);
+                        }
+                    }
+                }
+                ui.horizontal(|ui| {
+                    let Some(frames) = docs.sheets[row].as_ref() else {
+                        ui.add_space(320.0);
+                        return;
+                    };
+                    let tex = &frames[frame];
+                    ui.add(egui::Image::new(tex).fit_to_exact_size(egui::vec2(320.0, 218.0)));
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(&item.name).strong().size(18.0).color(TEXT));
+                        ui.label(RichText::new(&item.group).small().color(DIM));
+                        ui.add_space(4.0);
+                        ui.label(RichText::new(&item.text).color(TEXT));
+                        if item.ammo > 0 {
+                            let ammo = match (item.ammo, item.group.as_str()) {
+                                (999, _) => "bis zur Rundenende".to_string(),
+                                (n, "Effekt") => format!("{n} s"),
+                                (n, _) => format!("{n}× Munition"),
+                            };
+                            ui.label(RichText::new(ammo).small().color(DIM));
+                        }
+                    });
+                });
+                ui.add_space(14.0);
+            }
+        });
+    }
+}
+
 impl eframe::App for Launcher {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -366,6 +483,9 @@ impl eframe::App for Launcher {
                         ui.label(
                             RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).monospace().size(11.0).color(DIM),
                         );
+                        if small_button(ui, if self.show_docs { "ZURÜCK" } else { "WAFFEN" }) {
+                            self.show_docs = !self.show_docs;
+                        }
                         if small_button(ui, "GITHUB") {
                             open(GITHUB);
                         }
@@ -499,8 +619,12 @@ impl eframe::App for Launcher {
             .show(ui, |ui| self.news(ui, release.as_ref(), offline.as_deref()));
 
         egui::CentralPanel::default().frame(egui::Frame::new().fill(BG)).show(ui, |ui| {
-            let rect = ui.max_rect();
-            self.hero(ui, rect);
+            if self.show_docs {
+                self.docs_ui(ui);
+            } else {
+                let rect = ui.max_rect();
+                self.hero(ui, rect);
+            }
         });
     }
 }
