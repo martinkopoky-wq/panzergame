@@ -257,6 +257,82 @@ Ungefähr jede dritte Runde bekommt eine Sonderregel, die am Anfang groß angeze
 - **Im selben WLAN/LAN** geht das direkt. Eventuell den **UDP**-Port 5555 in der Firewall des Hosts freigeben.
 - **Übers Internet:** am einfachsten alle in Tailscale (oder ZeroTier), dann die Tailscale-IP des Hosts verwenden (`tailscale ip -4`). Alternativ Port-Forwarding von **UDP** 5555.
 
+## Server auf Debian mit Docker
+
+Diese Anleitung ist für einen frischen Debian-Server (Debian 12 oder 13). Alles läuft als normaler Benutzer mit `sudo`.
+
+**1. Pakete installieren**
+
+```bash
+sudo apt update
+sudo apt install -y git docker.io ufw
+```
+
+- `git` holt den Quellcode, `docker.io` ist Docker aus den Debian-Paketen, `ufw` ist die Firewall (optional, aber empfohlen).
+
+**2. Docker starten und den Benutzer freischalten**
+
+```bash
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
+```
+
+Danach einmal abmelden und wieder anmelden, sonst gilt die Gruppe noch nicht. Test: `docker run --rm hello-world` sollte einen Gruß ausgeben.
+
+**3. Quellcode holen und Image bauen**
+
+```bash
+git clone https://github.com/martinkopoky-wq/panzergame.git
+cd panzergame
+git checkout v2.2.0
+docker build -t panzer-server .
+```
+
+Das Image wird im Container mit Rust gebaut. Auf dem Server selbst ist kein Rust nötig. Der Bau dauert beim ersten Mal ein paar Minuten.
+
+**4. Server starten**
+
+```bash
+docker run -dit --name panzer --restart unless-stopped \
+    -p 5555:5555/udp \
+    -e PANZER_BOTS=3 \
+    -e PANZER_ADMIN_PASS=ein-langes-passwort \
+    -v panzer-data:/data \
+    panzer-server
+```
+
+- `-p 5555:5555/udp`: der Spielport ist UDP, nicht TCP.
+- `--restart unless-stopped`: der Server startet nach einem Neustart des Servers wieder.
+- `PANZER_BOTS` füllt freie Plätze mit Bots, `PANZER_ADMIN_PASS` ist das Passwort für `/login` im Spiel.
+- `panzer-data` ist ein Docker-Volume. Dort liegt die Bannliste, sie übersteht Updates.
+
+**5. Firewall öffnen**
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 5555/udp
+sudo ufw enable
+```
+
+`OpenSSH` zuerst, sonst sperrst du dich selbst aus. Bei einem Heimnetz zusätzlich im Router UDP 5555 an den Server weiterleiten.
+
+**6. Betrieb**
+
+| Aufgabe | Befehl |
+|---|---|
+| Logs ansehen | `docker logs -f panzer` |
+| Konsole öffnen | `docker attach panzer`, zurück mit Strg+P, dann Strg+Q |
+| Stoppen / Starten | `docker stop panzer` / `docker start panzer` |
+| Aktualisieren | `git pull`, `git checkout v2.2.0` (oder neuere Version), `docker build -t panzer-server .`, dann `docker rm -f panzer` und Schritt 4 erneut ausführen |
+
+Ein Update lässt das Volume `panzer-data` unverändert.
+
+**Häufige Probleme**
+
+- *Keiner kann beitreten:* Port in der Firewall und im Router prüfen, Protokoll muss UDP sein. Mit `docker ps` prüfen, ob der Container läuft.
+- *`permission denied` beim Docker-Befehl:* Benutzer ist noch nicht in der Gruppe `docker`, siehe Schritt 2.
+- *Clients sind veraltet:* Ab Version 2.2.0 ist das Protokoll 11. Ältere Spiele (bis 2.1.2) können sich nicht verbinden.
+
 ## Anti-Cheat
 
 Der Server ist autoritativ: Clients schicken nur Tasten, alles andere rechnet der Server.
