@@ -232,9 +232,6 @@ impl NetClient {
     }
 
     fn snap_body(&mut self, body: &[u8], now: f64) {
-        if !matches!(self.state, NetState::Connected) {
-            return;
-        }
         let mut r = Reader::new(body);
         let Ok(head) = SnapHead::read(&mut r) else { return };
         self.rel_out.ack(head.rel_ack);
@@ -246,6 +243,9 @@ impl NetClient {
                     }
                 }
             }
+        }
+        if !matches!(self.state, NetState::Connected) {
+            return;
         }
         if head.seq <= self.latest {
             return; // veraltet oder doppelt

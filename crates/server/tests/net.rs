@@ -11,6 +11,7 @@ use panzer_core::consts::*;
 use panzer_core::net::{Reassembly, RelIn, RelOut};
 use panzer_core::proto::*;
 use panzer_core::snap::NetSnap;
+use panzer_core::Maze;
 use panzer_server::{Config, Server};
 
 struct TestClient {
@@ -27,6 +28,7 @@ struct TestClient {
     chat: Vec<String>,
     /// Sonderregel jedes empfangenen Labyrinths
     mutators: Vec<Option<Mutator>>,
+    mazes: Vec<Maze>,
     kicked: Option<String>,
     bytes: usize,
     packets: usize,
@@ -60,6 +62,7 @@ impl TestClient {
                             seq: 0,
                             chat: Vec::new(),
                             mutators: Vec::new(),
+                            mazes: Vec::new(),
                             kicked: None,
                             bytes: 0,
                             packets: 0,
@@ -122,7 +125,10 @@ impl TestClient {
             for m in self.rel_in.receive(id, d).unwrap() {
                 match Msg::decode(&m) {
                     Ok(Msg::Chat { text, .. }) => self.chat.push(text),
-                    Ok(Msg::Maze(maze)) => self.mutators.push(maze.mutator),
+                    Ok(Msg::Maze(maze)) => {
+                        self.mutators.push(maze.mutator);
+                        self.mazes.push(maze);
+                    }
                     _ => {}
                 }
             }
@@ -253,6 +259,8 @@ fn multiplayer_over_udp() {
     run(&mut [&mut host, &mut b, &mut c], 500);
     assert_eq!(host.snap().maze_id, round, "Beitritt darf die Runde nicht neu starten");
     assert!(c.snap().queued, "Neuer Spieler muss in der Warteschlange sein");
+    let c_maze = c.mazes.last().expect("neuer Spieler muss das Labyrinth erhalten");
+    assert!(host.mazes.iter().any(|maze| maze == c_maze), "Spieler müssen dasselbe Labyrinth erhalten");
     assert_eq!(host.snap().tanks.len(), 2);
     assert!(c.chat.iter().any(|t| t.contains("Warteschlange")));
 
