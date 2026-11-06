@@ -68,12 +68,12 @@ pub async fn run_local(app: &mut App, players: usize, bots: usize) -> bool {
     show_mouse(false);
     let mut acc = 0.0f64;
     loop {
-        if is_quit_requested() {
-            return true;
-        }
         if app.common_keys() {
             show_mouse(true);
             return false;
+        }
+        if is_quit_requested() {
+            return true;
         }
         drain_chars();
         acc = (acc + get_frame_time() as f64).min(0.25);
@@ -172,10 +172,6 @@ async fn run_online(app: &mut App, mut net: NetClient, host: Option<&HostCtx>) -
     let mut chat = Chat::new();
     show_mouse(false);
     loop {
-        if is_quit_requested() {
-            net.bye();
-            return true;
-        }
         net.update();
         if let NetState::Closed(reason) = &net.state {
             let reason = reason.clone();
@@ -191,6 +187,10 @@ async fn run_online(app: &mut App, mut net: NetClient, host: Option<&HostCtx>) -
             net.bye();
             show_mouse(true);
             return false;
+        }
+        if is_quit_requested() && !(esc && was_open) {
+            net.bye();
+            return true;
         }
         let tab = is_key_down(KeyCode::Tab);
         let (keys, fires) = inp.state(!chat.open);
@@ -324,10 +324,8 @@ pub async fn menu(app: &mut App) -> Option<Action> {
     let rules = RoundRule::all();
     drain_chars();
     loop {
-        if is_quit_requested() {
-            return None;
-        }
-        if app.common_keys() {
+        let esc = app.common_keys();
+        if is_quit_requested() && !esc {
             return None;
         }
         let m = Layout::now().mouse();
@@ -465,7 +463,7 @@ pub async fn menu(app: &mut App) -> Option<Action> {
             }
         }
         g.text(
-            "Esc beendet  ·  F11 Vollbild  ·  F2 Ton  ·  F4 Musik  ·  Tab wechselt das Feld",
+            "F11 Vollbild  ·  F2 Ton  ·  F4 Musik  ·  Tab wechselt das Feld",
             cx,
             VH - 16.0,
             15.0,
