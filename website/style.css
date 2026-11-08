@@ -218,7 +218,8 @@ section {
   transition: color 0.2s var(--ease);
 }
 
-.bar nav a:not(.btn):hover {
+.bar nav a:not(.btn):hover,
+.bar nav a[aria-current="page"] {
   color: var(--text);
 }
 
@@ -382,8 +383,9 @@ section {
   border-radius: var(--radius);
   background-color: var(--tile);
   background-image: url("img/items.png");
-  background-size: 1000% 700%;
-  background-position: calc(var(--x) / 9 * 100%) calc(var(--y) / 6 * 100%);
+  /* 10 Spalten, Zeilen je nach Zahl der Power-ups (--rows an der Liste) */
+  background-size: 1000% calc(var(--rows, 10) * 100%);
+  background-position: calc(var(--x) / 9 * 100%) calc(var(--y) / (var(--rows, 10) - 1) * 100%);
 }
 
 /* Server */
@@ -633,7 +635,7 @@ footer a:hover {
     overflow: hidden;
   }
   .marquee.running .items {
-    animation: slide 170s linear infinite;
+    animation: slide 236s linear infinite;
   }
   .marquee.running:hover .items {
     animation-play-state: paused;

@@ -301,7 +301,7 @@ impl Launcher {
         );
         y += 104.0;
         for line in
-            ["Bis zu 8 Spieler über LAN und Internet,", "Bots, 67 Power-ups und jede Runde ein neues Labyrinth."]
+            ["Bis zu 8 Spieler über LAN und Internet,", "Bots, 93 Power-ups und jede Runde ein neues Labyrinth."]
         {
             p.text(
                 Pos2::new(x, y),

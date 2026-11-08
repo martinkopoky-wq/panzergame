@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Panzer: Labyrinth-Panzerschlacht für bis zu 8 Spieler</title>
-  <meta name="description" content="Bis zu 8 Spieler über LAN und Internet, Bots, 67 Power-ups und jede Runde ein neues Labyrinth. Kostenlos für Windows, macOS und Linux.">
+  <meta name="description" content="Bis zu 8 Spieler über LAN und Internet, Bots, 93 Power-ups und jede Runde ein neues Labyrinth. Kostenlos für Windows, macOS und Linux.">
   <meta name="theme-color" content="#0d0e12">
   <link rel="icon" type="image/png" href="img/favicon.png">
   <link rel="apple-touch-icon" href="img/icon.png">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://martinkopoky-wq.github.io/panzergame/">
   <meta property="og:title" content="Panzer: Labyrinth-Panzerschlacht für bis zu 8 Spieler">
-  <meta property="og:description" content="Bis zu 8 Spieler über LAN und Internet, Bots, 67 Power-ups und jede Runde ein neues Labyrinth.">
+  <meta property="og:description" content="Bis zu 8 Spieler über LAN und Internet, Bots, 93 Power-ups und jede Runde ein neues Labyrinth.">
   <meta property="og:image" content="https://martinkopoky-wq.github.io/panzergame/img/hero.jpg">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preload" href="fonts/RobotoCondensed-Bold.woff" as="font" type="font/woff" crossorigin>
@@ -35,6 +35,7 @@
       <nav aria-label="Hauptnavigation">
         <a href="#spiel">Spiel</a>
         <a href="waffen.html">Waffen</a>
+        <a href="neuigkeiten.html">Neuigkeiten</a>
         <a href="#server">Server</a>
         <a href="https://github.com/martinkopoky-wq/panzergame">GitHub</a>
         <a class="btn btn-primary" href="#download">Herunterladen</a>
@@ -49,7 +50,7 @@
       <div class="wrap hero-copy">
         <p class="label">Labyrinth-Panzerschlacht</p>
         <h1>PANZER</h1>
-        <p class="lead">Bis zu 8 Spieler über LAN und Internet, Bots, 67 Power-ups und jede Runde ein neues Labyrinth.</p>
+        <p class="lead">Bis zu 8 Spieler über LAN und Internet, Bots, 93 Power-ups und jede Runde ein neues Labyrinth.</p>
         <div class="actions">
           <a class="btn btn-primary btn-large" id="hero-download" href="#download"><svg class="icon" aria-hidden="true"><use href="#download-simple"></use></svg><span>Herunterladen</span></a>
           <a class="btn btn-large" id="hero-other" href="#download">Andere Systeme</a>
@@ -99,11 +100,12 @@
 
     <section class="powerups" aria-labelledby="powerups-title">
       <div class="wrap">
-        <h2 id="powerups-title" class="reveal">67 Power-ups</h2>
+        <h2 id="powerups-title" class="reveal">93 Power-ups</h2>
         <p class="intro reveal">Von der Railgun über die Bärenfalle bis zum Schwarzen Loch. Die Atombombe gibt es nur aus der Wundertüte.</p>
       </div>
       <div class="marquee">
-        <ul class="items">
+        <!-- power-ups:start -->
+        <ul class="items" style="--rows:10">
           <li><span class="ico" style="--x:0;--y:0"></span>Splitterbombe</li>
           <li><span class="ico" style="--x:1;--y:0"></span>MG</li>
           <li><span class="ico" style="--x:2;--y:0"></span>Laser</li>
@@ -150,28 +152,55 @@
           <li><span class="ico" style="--x:3;--y:4"></span>Kugelsprinkler</li>
           <li><span class="ico" style="--x:4;--y:4"></span>Enterhaken</li>
           <li><span class="ico" style="--x:5;--y:4"></span>Selbstzerstörung</li>
-          <li><span class="ico" style="--x:6;--y:4"></span>Schild</li>
-          <li><span class="ico" style="--x:7;--y:4"></span>Turbo</li>
-          <li><span class="ico" style="--x:8;--y:4"></span>Schrumpfpilz</li>
-          <li><span class="ico" style="--x:9;--y:4"></span>Geist</li>
-          <li><span class="ico" style="--x:0;--y:5"></span>Tarnkappe</li>
-          <li><span class="ico" style="--x:1;--y:5"></span>Verwirrung</li>
-          <li><span class="ico" style="--x:2;--y:5"></span>Spiegelschild</li>
-          <li><span class="ico" style="--x:3;--y:5"></span>Superstern</li>
-          <li><span class="ico" style="--x:4;--y:5"></span>Riesenpilz</li>
-          <li><span class="ico" style="--x:5;--y:5"></span>Schnellfeuer</li>
-          <li><span class="ico" style="--x:6;--y:5"></span>Ersatzteil</li>
-          <li><span class="ico" style="--x:7;--y:5"></span>Lähmung</li>
-          <li><span class="ico" style="--x:8;--y:5"></span>Doppellauf</li>
-          <li><span class="ico" style="--x:9;--y:5"></span>Teleporter</li>
-          <li><span class="ico" style="--x:0;--y:6"></span>Discokugel</li>
-          <li><span class="ico" style="--x:1;--y:6"></span>Radar</li>
-          <li><span class="ico" style="--x:2;--y:6"></span>Atombombe</li>
-          <li><span class="ico" style="--x:3;--y:6"></span>Goldene Kugel</li>
-          <li><span class="ico" style="--x:4;--y:6"></span>Heiße Kartoffel</li>
-          <li><span class="ico" style="--x:5;--y:6"></span>Meteoritenschauer</li>
-          <li><span class="ico" style="--x:6;--y:6"></span>Wundertüte</li>
+          <li><span class="ico" style="--x:6;--y:4"></span>Geschossschere</li>
+          <li><span class="ico" style="--x:7;--y:4"></span>Hohlringgranate</li>
+          <li><span class="ico" style="--x:8;--y:4"></span>Distanzzünder</li>
+          <li><span class="ico" style="--x:9;--y:4"></span>Kugelfresser</li>
+          <li><span class="ico" style="--x:0;--y:5"></span>Entwaffnungsfächer</li>
+          <li><span class="ico" style="--x:1;--y:5"></span>Zweitaktgeschoss</li>
+          <li><span class="ico" style="--x:2;--y:5"></span>Eckenschuss</li>
+          <li><span class="ico" style="--x:3;--y:5"></span>Kettenzange</li>
+          <li><span class="ico" style="--x:4;--y:5"></span>Schwenkhammer</li>
+          <li><span class="ico" style="--x:5;--y:5"></span>Zündpause</li>
+          <li><span class="ico" style="--x:6;--y:5"></span>Köderladung</li>
+          <li><span class="ico" style="--x:7;--y:5"></span>Schattensalve</li>
+          <li><span class="ico" style="--x:8;--y:5"></span>Rohrverdreher</li>
+          <li><span class="ico" style="--x:9;--y:5"></span>Geschossweiche</li>
+          <li><span class="ico" style="--x:0;--y:6"></span>Nachbrennbild</li>
+          <li><span class="ico" style="--x:1;--y:6"></span>Richtungsdorn</li>
+          <li><span class="ico" style="--x:2;--y:6"></span>Trittplatte</li>
+          <li><span class="ico" style="--x:3;--y:6"></span>Zangenmarkierung</li>
+          <li><span class="ico" style="--x:4;--y:6"></span>Fadenkreuzfluch</li>
+          <li><span class="ico" style="--x:5;--y:6"></span>Kreuzpendel</li>
+          <li><span class="ico" style="--x:6;--y:6"></span>Stillstandsurteil</li>
+          <li><span class="ico" style="--x:7;--y:6"></span>Geschossbrüter</li>
+          <li><span class="ico" style="--x:8;--y:6"></span>Konterklinge</li>
+          <li><span class="ico" style="--x:9;--y:6"></span>Rostwolke</li>
+          <li><span class="ico" style="--x:0;--y:7"></span>Prallkissen</li>
+          <li><span class="ico" style="--x:1;--y:7"></span>Kanonenschlag</li>
+          <li><span class="ico" style="--x:2;--y:7"></span>Schild</li>
+          <li><span class="ico" style="--x:3;--y:7"></span>Turbo</li>
+          <li><span class="ico" style="--x:4;--y:7"></span>Schrumpfpilz</li>
+          <li><span class="ico" style="--x:5;--y:7"></span>Geist</li>
+          <li><span class="ico" style="--x:6;--y:7"></span>Tarnkappe</li>
+          <li><span class="ico" style="--x:7;--y:7"></span>Verwirrung</li>
+          <li><span class="ico" style="--x:8;--y:7"></span>Spiegelschild</li>
+          <li><span class="ico" style="--x:9;--y:7"></span>Superstern</li>
+          <li><span class="ico" style="--x:0;--y:8"></span>Riesenpilz</li>
+          <li><span class="ico" style="--x:1;--y:8"></span>Schnellfeuer</li>
+          <li><span class="ico" style="--x:2;--y:8"></span>Ersatzteil</li>
+          <li><span class="ico" style="--x:3;--y:8"></span>Lähmung</li>
+          <li><span class="ico" style="--x:4;--y:8"></span>Doppellauf</li>
+          <li><span class="ico" style="--x:5;--y:8"></span>Teleporter</li>
+          <li><span class="ico" style="--x:6;--y:8"></span>Discokugel</li>
+          <li><span class="ico" style="--x:7;--y:8"></span>Radar</li>
+          <li><span class="ico" style="--x:8;--y:8"></span>Atombombe</li>
+          <li><span class="ico" style="--x:9;--y:8"></span>Goldene Kugel</li>
+          <li><span class="ico" style="--x:0;--y:9"></span>Heiße Kartoffel</li>
+          <li><span class="ico" style="--x:1;--y:9"></span>Meteoritenschauer</li>
+          <li><span class="ico" style="--x:2;--y:9"></span>Wundertüte</li>
         </ul>
+        <!-- power-ups:end -->
       </div>
     </section>
 
@@ -254,6 +283,7 @@
             <a href="https://github.com/martinkopoky-wq/panzergame/releases/latest/download/panzer-server-macos-universal.zip">macOS</a>,
             <a href="https://github.com/martinkopoky-wq/panzergame/releases/latest/download/panzer-server-linux-x86_64.tar.gz">Linux</a></span>
           <a href="https://github.com/martinkopoky-wq/panzergame/releases/latest/download/SHA256SUMS.txt">Prüfsummen</a>
+          <a href="neuigkeiten.html">Neuigkeiten</a>
           <a href="https://github.com/martinkopoky-wq/panzergame/releases">Alle Versionen</a>
         </div>
       </div>

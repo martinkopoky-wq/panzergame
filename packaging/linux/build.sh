@@ -55,7 +55,7 @@ Depends: libc6, libgcc-s1, libasound2 | libasound2t64, libgl1, libx11-6, libxi6,
 Recommends: libwayland-client0, libwayland-egl1, libxcursor1
 Description: Launcher für Panzer, eine Labyrinth-Panzerschlacht
  Lädt das Spiel herunter, hält es aktuell und startet es.
- Bis zu 8 Spieler über LAN und Internet, dazu Bots und 67 Power-ups.
+ Bis zu 8 Spieler über LAN und Internet, dazu Bots und 93 Power-ups.
 EOF
 dpkg-deb -Zxz --root-owner-group --build "$DEB" "$DIST/panzer-launcher_amd64.deb" >/dev/null
 

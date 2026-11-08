@@ -52,7 +52,10 @@
         const target = link.querySelector(".size");
         if (size && target) target.textContent = formatSize(size);
       });
-      document.getElementById("version").textContent = "Aktuell: " + release.tag_name;
+      const news = document.createElement("a");
+      news.href = "neuigkeiten.html#" + release.tag_name;
+      news.textContent = "Aktuell: " + release.tag_name + ", was ist neu?";
+      document.getElementById("version").replaceChildren(news);
     } catch (error) {
       console.debug("Release-Infos nicht geladen", error);
     }

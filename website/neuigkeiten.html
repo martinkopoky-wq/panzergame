@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Neuigkeiten: Panzer</title>
+  <meta name="description" content="Was in den einzelnen Versionen von Panzer neu dazugekommen ist: Waffen, Spielmodi, Fehlerbehebungen und Änderungen am Server.">
+  <meta name="theme-color" content="#0d0e12">
+  <link rel="icon" type="image/png" href="img/favicon.png">
+  <link rel="apple-touch-icon" href="img/icon.png">
+  <link rel="preload" href="fonts/RobotoCondensed-Bold.woff" as="font" type="font/woff" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="neuigkeiten.css">
+</head>
+<body>
+  <!-- Symbole: Phosphor Icons (MIT), https://phosphoricons.com -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="github-logo" viewBox="0 0 256 256"><path d="M208.31,75.68A59.78,59.78,0,0,0,202.93,28,8,8,0,0,0,196,24a59.75,59.75,0,0,0-48,24H124A59.75,59.75,0,0,0,76,24a8,8,0,0,0-6.93,4,59.78,59.78,0,0,0-5.38,47.68A58.14,58.14,0,0,0,56,104v8a56.06,56.06,0,0,0,48.44,55.47A39.8,39.8,0,0,0,96,192v8H72a24,24,0,0,1-24-24A40,40,0,0,0,8,136a8,8,0,0,0,0,16,24,24,0,0,1,24,24,40,40,0,0,0,40,40H96v16a8,8,0,0,0,16,0V192a24,24,0,0,1,48,0v40a8,8,0,0,0,16,0V192a39.8,39.8,0,0,0-8.44-24.53A56.06,56.06,0,0,0,216,112v-8A58.14,58.14,0,0,0,208.31,75.68ZM200,112a40,40,0,0,1-40,40H112a40,40,0,0,1-40-40v-8a41.74,41.74,0,0,1,6.9-22.48A8,8,0,0,0,80,73.83a43.81,43.81,0,0,1,.79-33.58,43.88,43.88,0,0,1,32.32,20.06A8,8,0,0,0,119.82,64h32.35a8,8,0,0,0,6.74-3.69,43.87,43.87,0,0,1,32.32-20.06A43.81,43.81,0,0,1,192,73.83a8.09,8.09,0,0,0,1,7.65A41.72,41.72,0,0,1,200,104Z"/></symbol>
+  </svg>
+
+  <header class="bar">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="img/favicon.png" alt="" width="28" height="28">PANZER</a>
+      <nav aria-label="Hauptnavigation">
+        <a href="index.html#spiel">Spiel</a>
+        <a href="waffen.html">Waffen</a>
+        <a href="neuigkeiten.html" aria-current="page">Neuigkeiten</a>
+        <a href="index.html#server">Server</a>
+        <a href="https://github.com/martinkopoky-wq/panzergame">GitHub</a>
+        <a class="btn btn-primary" href="index.html#download">Herunterladen</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap news-intro">
+      <p class="label">Versionen</p>
+      <h1>Neuigkeiten</h1>
+      <p class="intro">Was in jeder Version dazugekommen ist. Der Launcher holt neue Versionen von selbst. Spielt ihr zusammen, braucht ihr alle eine Version, die miteinander kann: Das steht jeweils unter „Wichtig“.</p>
+    </div>
+
+    <div class="wrap releases">
+        <!-- releases:start -->
+        <article class="release" id="v2.2.1">
+          <header class="release-head">
+            <h2><a href="#v2.2.1">2.2.1</a></h2>
+            <p class="label"><time datetime="2026-11-08">8. November 2026</time></p>
+            <p class="release-tag">Aktuell</p>
+          </header>
+          <div class="release-body">
+            <div class="release-part">
+              <h3>Behoben</h3>
+              <ul>
+                <li>Unter Windows waren auf manchen Rechnern das Menü und die Anzeigen im Spiel (Punkte, Spielerkarten, Banner) fast unsichtbar und flackerten nur kurz halb gezeichnet auf. Das Spiel wartet jetzt, bis jedes Bild fertig gezeichnet ist, bevor Windows es anzeigt</li>
+              </ul>
+            </div>
+            <div class="release-part">
+              <h3>Website</h3>
+              <ul>
+                <li>Neue Seite „Neuigkeiten“ mit allem, was in den einzelnen Versionen dazugekommen ist</li>
+                <li>Die Startseite zeigt jetzt alle 93 Power-ups, auch die 26 Waffen aus 2.2.0</li>
+              </ul>
+            </div>
+            <div class="release-part important">
+              <h3>Wichtig</h3>
+              <ul>
+                <li>PROTO bleibt 11, 2.2.0 und 2.2.1 können zusammen spielen</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+        <article class="release" id="v2.2.0">
+          <header class="release-head">
+            <h2><a href="#v2.2.0">2.2.0</a></h2>
+            <p class="label"><time datetime="2026-11-06">6. November 2026</time></p>
+          </header>
+          <div class="release-body">
+            <div class="release-part">
+              <h3>Neu</h3>
+              <ul>
+                <li>26 neue Waffen: Geschossschere, Hohlringgranate, Distanzzünder, Kugelfresser, Entwaffnungsfächer, Zweitaktgeschoss, Eckenschuss, Kettenzange, Schwenkhammer, Zündpause, Köderladung, Schattensalve, Rohrverdreher, Geschossweiche, Nachbrennbild, Richtungsdorn, Trittplatte, Zangenmarkierung, Fadenkreuzfluch, Kreuzpendel, Stillstandsurteil, Geschossbrüter, Konterklinge, Rostwolke, Prallkissen, Kanonenschlag</li>
+                <li>Waffen-Doku: auf der Website (Menü „Waffen“) und im Launcher („WAFFEN“) mit Vorschau jeder Waffe</li>
+              </ul>
+            </div>
+            <div class="release-part important">
+              <h3>Wichtig</h3>
+              <ul>
+                <li>PROTO ist jetzt 11. Versionen bis 2.1.2 können mit 2.2.0 nicht zusammen spielen, Client und Server müssen beide 2.2.0 sein</li>
+                <li>Die neuen Waffen sind Startwerte und noch nicht ausbalanciert</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+        <article class="release" id="v2.1.2">
+          <header class="release-head">
+            <h2><a href="#v2.1.2">2.1.2</a></h2>
+            <p class="label"><time datetime="2026-11-06">6. November 2026</time></p>
+          </header>
+          <div class="release-body">
+            <div class="release-part">
+              <h3>Behoben</h3>
+              <ul>
+                <li>Esc im Menü hat das ganze Spiel beendet. Ein versehentlicher Druck, und die Partie war weg. Das Menü wird jetzt nur noch über das Fenster beendet, Esc führt wie gehabt aus dem Spiel zurück ins Menü</li>
+                <li>Die ersten Nachrichten des Servers beim Beitritt konnte der Client verlieren, weil sie vor der fertigen Verbindung ankamen: Labyrinth, Spielerliste und Chat fehlten dann, bis der Server erneut schickte. Wer wartet, sieht die laufende Runde jetzt sofort</li>
+              </ul>
+            </div>
+            <div class="release-part important">
+              <h3>Wichtig</h3>
+              <ul>
+                <li>PROTO bleibt 9, alle Versionen ab 2.1.0 können weiter zusammen spielen</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+        <article class="release" id="v2.1.1">
+          <header class="release-head">
+            <h2><a href="#v2.1.1">2.1.1</a></h2>
+            <p class="label"><time datetime="2026-11-05">5. November 2026</time></p>
+          </header>
+          <div class="release-body">
+            <div class="release-part">
+              <h3>Behoben</h3>
+              <ul>
+                <li>Der Server stürzte ab, wenn ein Spieler das Spiel verließ, während Bots mitspielten. Das betraf auch das Hosten im Spiel</li>
+              </ul>
+            </div>
+            <div class="release-part">
+              <h3>Server</h3>
+              <ul>
+                <li>Der dedizierte Server lässt sich selbst als Docker-Image bauen und über Umgebungsvariablen einstellen</li>
+              </ul>
+            </div>
+            <div class="release-part important">
+              <h3>Wichtig</h3>
+              <ul>
+                <li>Mit 2.1.0 kann man weiter zusammen spielen, wer hostet oder einen Server betreibt, sollte aber aktualisieren</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+        <article class="release" id="v2.1.0">
+          <header class="release-head">
+            <h2><a href="#v2.1.0">2.1.0</a></h2>
+            <p class="label"><time datetime="2026-11-05">5. November 2026</time></p>
+          </header>
+          <div class="release-body">
+            <div class="release-part">
+              <h3>Neu</h3>
+              <ul>
+                <li>8 neue Waffen: Querschläger, Schlangenkugel, Zeitbombe, Napalm, Laserschranke, Kugelsprinkler, Enterhaken und Selbstzerstörung</li>
+                <li>Im Menü lässt sich die Sonderregel wählen: Zufall, keine oder immer dieselbe, zum Beispiel nur Kistenregen</li>
+              </ul>
+            </div>
+            <div class="release-part">
+              <h3>Bots</h3>
+              <ul>
+                <li>Legen jetzt wirklich Minen und Wände</li>
+                <li>Bleiben mit Nahkampfwaffen nicht mehr untätig stehen</li>
+              </ul>
+            </div>
+            <div class="release-part important">
+              <h3>Wichtig</h3>
+              <ul>
+                <li>Alle Spieler brauchen diese Version, mit 2.0 kann man nicht mehr zusammen spielen</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+        <article class="release" id="v2.0.0">
+          <header class="release-head">
+            <h2><a href="#v2.0.0">2.0.0</a></h2>
+            <p class="label"><time datetime="2026-11-05">5. November 2026</time></p>
+          </header>
+          <div class="release-body">
+            <div class="release-part">
+              <h3>Neu</h3>
+              <ul>
+                <li>Komplett neu in Rust: schneller und stabiler</li>
+                <li>Launcher für Windows, macOS und Linux, der das Spiel aktuell hält</li>
+                <li>Dedizierter Server mit Anti-Cheat</li>
+                <li>Chat, Spielerliste, Kick und Bann für den Host</li>
+                <li>Name ist Pflicht, doppelte Namen bekommen eine Nummer</li>
+                <li>Beitreten ohne Rundenneustart: Neue warten in der Warteschlange</li>
+              </ul>
+            </div>
+            <div class="release-part">
+              <h3>Netzwerk</h3>
+              <ul>
+                <li>UDP mit Delta-Snapshots: rund 30-100 Byte statt mehrerer KB pro Paket</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+        <!-- releases:end -->
+      <p class="more"><a href="https://github.com/martinkopoky-wq/panzergame/releases">Alle Versionen mit Downloads auf GitHub</a></p>
+    </div>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Panzer ist kostenlos und Open Source (MIT-Lizenz).</span>
+      <a href="https://github.com/martinkopoky-wq/panzergame"><svg class="icon" aria-hidden="true"><use href="#github-logo"></use></svg>Quellcode auf GitHub</a>
+    </div>
+  </footer>
+</body>
+</html>

@@ -38,6 +38,7 @@ jobs:
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)
           test "${GITHUB_REF_NAME#v}" = "$version" || { echo "Tag $GITHUB_REF_NAME passt nicht zu Cargo.toml ($version)"; exit 1; }
+          grep -q "id=\"v$version\"" website/neuigkeiten.html || { echo "Version $version fehlt auf der Website: python3 scripts/export_releases.py"; exit 1; }
       - name: Tests
         run: cargo test --release --workspace --locked
       - name: Pakete bauen

@@ -1,7 +1,9 @@
-## Neu in 2.2.0
-- 26 neue Waffen: Geschossschere, Hohlringgranate, Distanzzünder, Kugelfresser, Entwaffnungsfächer, Zweitaktgeschoss, Eckenschuss, Kettenzange, Schwenkhammer, Zündpause, Köderladung, Schattensalve, Rohrverdreher, Geschossweiche, Nachbrennbild, Richtungsdorn, Trittplatte, Zangenmarkierung, Fadenkreuzfluch, Kreuzpendel, Stillstandsurteil, Geschossbrüter, Konterklinge, Rostwolke, Prallkissen, Kanonenschlag
-- Waffen-Doku: auf der Website (Menü „Waffen“) und im Launcher („WAFFEN“) mit Vorschau jeder Waffe
+## Behoben in 2.2.1
+- Unter Windows waren auf manchen Rechnern das Menü und die Anzeigen im Spiel (Punkte, Spielerkarten, Banner) fast unsichtbar und flackerten nur kurz halb gezeichnet auf. Das Spiel wartet jetzt, bis jedes Bild fertig gezeichnet ist, bevor Windows es anzeigt
+
+## Website
+- Neue Seite „Neuigkeiten“ mit allem, was in den einzelnen Versionen dazugekommen ist
+- Die Startseite zeigt jetzt alle 93 Power-ups, auch die 26 Waffen aus 2.2.0
 
 ## Wichtig
-- PROTO ist jetzt 11. Versionen bis 2.1.2 können mit 2.2.0 nicht zusammen spielen, Client und Server müssen beide 2.2.0 sein
-- Die neuen Waffen sind Startwerte und noch nicht ausbalanciert
+- PROTO bleibt 11, 2.2.0 und 2.2.1 können zusammen spielen

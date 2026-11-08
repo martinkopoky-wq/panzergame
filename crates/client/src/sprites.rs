@@ -1119,7 +1119,8 @@ mod tests {
         img.export_png(&format!("{dir}/panzer-1024.png"));
     }
 
-    /// Erzeugt website/img/items.png: alle Power-up-Symbole als Raster, Reihenfolge wie ALL_ITEMS.
+    /// Erzeugt website/img/items.png (alle Power-up-Symbole als Raster, Reihenfolge wie ALL_ITEMS)
+    /// und die Liste dazu in website/index.html zwischen den power-ups-Markern.
     /// cargo test -p panzer --release export_items -- --ignored
     #[test]
     #[ignore]
@@ -1129,7 +1130,7 @@ mod tests {
         const COLS: usize = 10;
         // "Eingefroren" ist nur eine Anzeige, kein Power-up
         let items: Vec<Item> = ALL_ITEMS.iter().copied().filter(|i| *i != Item::Frozen).collect();
-        assert_eq!(items.len(), 67);
+        assert_eq!(items.len(), 93, "neue Zahl auch auf Website, im README, Launcher und in build.sh eintragen");
         let rows = items.len().div_ceil(COLS);
         let mut cv = crate::raster::Canvas::new(CELL * COLS, CELL * rows);
         for (i, item) in items.iter().enumerate() {
@@ -1140,5 +1141,19 @@ mod tests {
         let bytes: Vec<u8> = cv.to_rgba8().chunks(CELL * COLS * 4).rev().flatten().copied().collect();
         let img = macroquad::texture::Image { width: (CELL * COLS) as u16, height: (CELL * rows) as u16, bytes };
         img.export_png(concat!(env!("CARGO_MANIFEST_DIR"), "/../../website/img/items.png"));
+
+        // Laufband auf der Startseite: Position im Raster und Name jedes Symbols
+        let mut list = format!("<ul class=\"items\" style=\"--rows:{rows}\">\n");
+        for (i, item) in items.iter().enumerate() {
+            let name = item.name().replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+            list += &format!("          <li><span class=\"ico\" style=\"--x:{};--y:{}\"></span>{name}</li>\n", i % COLS, i / COLS);
+        }
+        list += "        </ul>";
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../website/index.html");
+        let html = std::fs::read_to_string(path).unwrap();
+        let (start, end) = ("<!-- power-ups:start -->", "<!-- power-ups:end -->");
+        let a = html.find(start).expect("Startmarker fehlt in index.html") + start.len();
+        let b = html.find(end).expect("Endmarker fehlt in index.html");
+        std::fs::write(path, format!("{}\n        {list}\n        {}", &html[..a], &html[b..])).unwrap();
     }
 }

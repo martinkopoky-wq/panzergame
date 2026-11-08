@@ -89,7 +89,7 @@ Das Image verhält sich wie das aus dem `Dockerfile`, nur heißt sein Tag wie di
 ## Release
 
 1. Version in `Cargo.toml` hochzählen (`[workspace.package]`), danach `cargo check` für die `Cargo.lock`.
-2. `RELEASE_NOTES.md` schreiben. Der Text erscheint im Launcher unter den Neuigkeiten.
+2. `RELEASE_NOTES.md` schreiben. Der Text erscheint im Launcher unter den Neuigkeiten. Danach `python3 scripts/export_releases.py`, das trägt die Version auf der Website-Seite `neuigkeiten.html` ein (die Pipeline bricht beim Tag sonst ab).
 3. Committen, nach `main` bringen und den Tag pushen: `git tag v2.0.1 && git push origin v2.0.1`.
 
 Der Workflow `release.yml` baut dann auf allen Systemen, testet die Pakete und veröffentlicht den Release samt `SHA256SUMS.txt`. Pushes auf andere Branches bauen nur Artefakte zum Prüfen, wenn sich die Pakete ändern. Die Website geht bei jeder Änderung in `website/` auf `main` über `pages.yml` online.
@@ -135,7 +135,7 @@ Kick und Bann gehen auch per Klick in der Spielerliste (Tab gedrückt halten).
 
 ## Power-ups
 
-Alle 6–11 s erscheint eine Kiste mit lila Schimmer, maximal 3 gleichzeitig. Drüberfahren hebt sie auf. Man trägt immer nur eine Waffe; wer schon eine hat, lässt Waffenkisten liegen. Effekte (untere Tabelle) wirken sofort und gehen immer. Insgesamt gibt es 67 Power-ups: 46 Waffen, 16 Effekte, die Wundertüte und 4 Sachen, die es nur aus der Wundertüte gibt.
+Alle 6–11 s erscheint eine Kiste mit lila Schimmer, maximal 3 gleichzeitig. Drüberfahren hebt sie auf. Man trägt immer nur eine Waffe; wer schon eine hat, lässt Waffenkisten liegen. Effekte (untere Tabelle) wirken sofort und gehen immer. Insgesamt gibt es 93 Power-ups: 72 Waffen, 16 Effekte, die Wundertüte und 4 Sachen, die es nur aus der Wundertüte gibt.
 
 **Waffen**
 
