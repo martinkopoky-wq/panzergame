@@ -98,8 +98,7 @@ pub async fn run_local(app: &mut App, players: usize, bots: usize) -> bool {
         if app.r.debug {
             app.g.text(&format!("{} FPS", get_fps()), 8.0, 28.0, 15.0, col([255, 90, 180]), 0.0);
         }
-        app.shot();
-        next_frame().await;
+        app.present().await;
     }
 }
 
@@ -120,8 +119,7 @@ pub async fn message(app: &mut App, text: &str) -> bool {
         if any && get_time() - start > 0.3 {
             return false;
         }
-        app.shot();
-        next_frame().await;
+        app.present().await;
     }
 }
 
@@ -297,8 +295,7 @@ async fn run_online(app: &mut App, mut net: NetClient, host: Option<&HostCtx>) -
         if !chat.open {
             hint(&app.g, NET_HINT);
         }
-        app.shot();
-        next_frame().await;
+        app.present().await;
     }
 }
 
@@ -476,11 +473,9 @@ pub async fn menu(app: &mut App) -> Option<Action> {
             }
             app.cfg.last_ip = ip.text.trim().to_string();
             app.cfg.save();
-            app.shot();
-            next_frame().await;
+            app.present().await;
             return Some(a);
         }
-        app.shot();
-        next_frame().await;
+        app.present().await;
     }
 }

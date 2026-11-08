@@ -134,6 +134,24 @@ impl App {
         }
     }
 
+    /// Ende jedes Bildes: alles Gesammelte zeichnen und anzeigen.
+    ///
+    /// Unter Windows vorher auf die GPU warten. Manche Treiber zeigen das Bild beim
+    /// SwapBuffers, bevor die zuletzt geschickten Befehle fertig sind. Dann fehlt alles
+    /// aus dem letzten Pass (Menü, Schleier, HUD) und blitzt nur ab und zu halb gezeichnet
+    /// auf, die Welt davor ist schon fertig und bleibt sichtbar.
+    pub async fn present(&mut self) {
+        self.shot();
+        if cfg!(windows) {
+            // SAFETY: nur Zeichnen auslösen und warten, am GL-Zustand ändert sich nichts
+            unsafe {
+                get_internal_gl().flush();
+                macroquad::miniquad::gl::glFinish();
+            }
+        }
+        next_frame().await;
+    }
+
     /// Beginn jedes Bildes
     pub fn begin(&self) {
         clear_background(BLACK);
