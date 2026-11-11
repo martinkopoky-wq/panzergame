@@ -21,13 +21,21 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     # Ältere glibc als das Runner-Image, damit es auch auf Debian 12 und Ubuntu 22.04 läuft
-    container: ubuntu:22.04
+    # Feste DNS-Server: am 11.11.2026 konnten Container auf den GitHub-Runnern
+    # generell keine Namen mehr auflösen (dreimal hintereinander, neue Versuche halfen nicht)
+    container:
+      image: ubuntu:22.04
+      options: --dns 1.1.1.1 --dns 8.8.8.8
     steps:
       - name: Pakete
         run: |
-          apt-get update -qq
-          apt-get install -y -qq build-essential ca-certificates curl dpkg-dev file git pkg-config zip \
-            libasound2-dev libgl1-mesa-dev libx11-dev libxi-dev
+          for i in 1 2 3 4 5; do
+            if apt-get update -qq && apt-get install -y -qq build-essential ca-certificates curl dpkg-dev file git pkg-config zip \
+              libasound2-dev libgl1-mesa-dev libx11-dev libxi-dev; then break; fi
+            test "$i" = 5 && exit 1
+            echo "apt fehlgeschlagen (Versuch $i), warte kurz"
+            sleep $((i * 15))
+          done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Rust
         run: |
@@ -53,7 +61,9 @@ jobs:
   linux-install:
     needs: linux
     runs-on: ubuntu-latest
-    container: ${{ matrix.image }}
+    container:
+      image: ${{ matrix.image }}
+      options: --dns 1.1.1.1 --dns 8.8.8.8
     strategy:
       fail-fast: false
       matrix:
@@ -65,8 +75,12 @@ jobs:
           path: dist
       - name: Paket installieren und Bibliotheken prüfen
         run: |
-          apt-get update -qq
-          apt-get install -y -qq unzip ./dist/panzer-launcher_amd64.deb
+          for i in 1 2 3 4 5; do
+            if apt-get update -qq && apt-get install -y -qq unzip ./dist/panzer-launcher_amd64.deb; then break; fi
+            test "$i" = 5 && exit 1
+            echo "apt fehlgeschlagen (Versuch $i), warte kurz"
+            sleep $((i * 15))
+          done
           test -x /usr/bin/panzer-launcher
           test -f /usr/share/applications/panzer-launcher.desktop
           unzip -q dist/panzer-game-linux-x86_64.zip -d /tmp/game
