@@ -542,41 +542,50 @@ const SH_LIFE: u8 = 16;
 const SH_OWNER: u8 = 32;
 
 fn write_tank(w: &mut Writer, t: &NetTank, base: Option<&NetTank>) {
-    let mut m = 0u16;
-    let differs = |f: &dyn Fn(&NetTank) -> bool| base.is_none_or(|b| f(b));
-    if differs(&|b| b.flags != t.flags) {
-        m |= TK_FLAGS;
-    }
-    if differs(&|b| b.x != t.x || b.y != t.y) {
-        m |= TK_POS;
-    }
-    if differs(&|b| b.a != t.a) {
-        m |= TK_ANG;
-    }
-    if differs(&|b| b.died != t.died) {
-        m |= TK_DIED;
-    }
-    if differs(&|b| b.weapon != t.weapon) {
-        m |= TK_WEAPON;
-    }
-    if differs(&|b| b.shield != t.shield) {
-        m |= TK_SHIELD;
-    }
-    if differs(&|b| b.ammo != t.ammo) {
-        m |= TK_AMMO;
-    }
-    if differs(&|b| b.reload != t.reload) {
-        m |= TK_RELOAD;
-    }
-    if differs(&|b| b.eff_mask != t.eff_mask || b.eff_exp != t.eff_exp) {
-        m |= TK_EFF;
-    }
-    if differs(&|b| b.charge != t.charge) {
-        m |= TK_CHARGE;
-    }
-    if differs(&|b| b.taunt != t.taunt) {
-        m |= TK_TAUNT;
-    }
+    // Maske direkt vergleichen: vorher 11 &dyn-Fn-Closures pro Panzer und Paket
+    let m: u16 = match base {
+        None => {
+            TK_FLAGS | TK_POS | TK_ANG | TK_DIED | TK_WEAPON | TK_SHIELD | TK_AMMO | TK_RELOAD
+                | TK_EFF | TK_CHARGE | TK_TAUNT
+        }
+        Some(b) => {
+            let mut m = 0u16;
+            if b.flags != t.flags {
+                m |= TK_FLAGS;
+            }
+            if b.x != t.x || b.y != t.y {
+                m |= TK_POS;
+            }
+            if b.a != t.a {
+                m |= TK_ANG;
+            }
+            if b.died != t.died {
+                m |= TK_DIED;
+            }
+            if b.weapon != t.weapon {
+                m |= TK_WEAPON;
+            }
+            if b.shield != t.shield {
+                m |= TK_SHIELD;
+            }
+            if b.ammo != t.ammo {
+                m |= TK_AMMO;
+            }
+            if b.reload != t.reload {
+                m |= TK_RELOAD;
+            }
+            if b.eff_mask != t.eff_mask || b.eff_exp != t.eff_exp {
+                m |= TK_EFF;
+            }
+            if b.charge != t.charge {
+                m |= TK_CHARGE;
+            }
+            if b.taunt != t.taunt {
+                m |= TK_TAUNT;
+            }
+            m
+        }
+    };
     w.u8(t.slot);
     w.var(m as u64);
     if m & TK_FLAGS != 0 {
@@ -634,7 +643,26 @@ fn read_tank(r: &mut Reader, base: &NetSnap) -> Res<NetTank> {
         return Err(DecodeError("Slot"));
     }
     let m = r.var()? as u16;
-    let mut t = base.tanks.iter().find(|b| b.slot == slot).cloned().unwrap_or_default();
+    // Basisfelder kopieren statt den ganzen Panzer zu klonen: ohne TK_EFF wird die
+    // Effektliste ohnehin übernommen, mit TK_EFF würde die geklonte Liste verworfen
+    let mut t = NetTank::default();
+    if let Some(b) = base.tanks.iter().find(|b| b.slot == slot) {
+        t.flags = b.flags;
+        t.x = b.x;
+        t.y = b.y;
+        t.a = b.a;
+        t.died = b.died;
+        t.weapon = b.weapon;
+        t.shield = b.shield;
+        t.ammo = b.ammo;
+        t.reload = b.reload;
+        t.eff_mask = b.eff_mask;
+        if m & TK_EFF == 0 {
+            t.eff_exp.extend_from_slice(&b.eff_exp);
+        }
+        t.charge = b.charge;
+        t.taunt = b.taunt;
+    }
     t.slot = slot;
     if m & TK_FLAGS != 0 {
         t.flags = r.u8()?;

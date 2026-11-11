@@ -119,11 +119,18 @@ impl Guard {
 
     /// Eingaben, die in diesem Tick ausgeführt werden dürfen
     pub fn take_tick(&mut self) -> Vec<(u32, Cmd, f64)> {
+        let mut out = Vec::new();
+        self.take_tick_into(&mut out);
+        out
+    }
+
+    /// wie take_tick, aber in einen wiederverwendeten Puffer (läuft pro Client und Tick)
+    pub fn take_tick_into(&mut self, out: &mut Vec<(u32, Cmd, f64)>) {
+        out.clear();
         let backlog: f64 = self.queue.iter().map(|(_, c)| (c.dt_ms as f64 / 1000.0).min(MAX_DT)).sum();
         // leicht schneller abarbeiten, wenn sich etwas angestaut hat (Uhren laufen nie gleich)
         let gain = if backlog > 0.1 { 1.05 } else { 1.0 };
         self.budget = (self.budget + TICK * gain).min(MAX_BUDGET);
-        let mut out = Vec::new();
         while let Some(&(seq, c)) = self.queue.front() {
             let dt = (c.dt_ms as f64 / 1000.0).min(MAX_DT);
             if dt > self.budget + 1e-6 {
@@ -143,7 +150,6 @@ impl Guard {
             self.dropped += dt;
             self.done_seq = seq;
         }
-        out
     }
 
     /// Einmal pro Sekunde: Verhältnisse prüfen

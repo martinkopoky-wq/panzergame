@@ -108,6 +108,10 @@ pub struct Bot {
     kills: usize,
     gg: bool,
     rng: Rng,
+    /// wiederverwendete Arbeitslisten: foes pro Denk-Tick, dist/prev pro Plan (0,3 s)
+    foes: Vec<usize>,
+    dist: Vec<u32>,
+    prev: Vec<Option<usize>>,
 }
 
 impl Bot {
@@ -141,6 +145,9 @@ impl Bot {
             kills: 0,
             gg: false,
             rng: Rng::new(slot as u64 * 7919 + 17),
+            foes: Vec::new(),
+            dist: Vec::new(),
+            prev: Vec::new(),
         };
         b.rng = Rng::from_entropy();
         for _ in 0..=slot {
@@ -185,12 +192,12 @@ impl Bot {
         }
         self.tick += 1;
         let radar = t.has(Eff::Radar); // mit Radar sieht er auch getarnte Panzer
-        let foes: Vec<usize> = (0..game.tanks.len())
-            .filter(|&i| {
-                let o = &game.tanks[i];
-                o.alive && i != ti && (radar || !o.has(Eff::Invis))
-            })
-            .collect();
+        let mut foes = std::mem::take(&mut self.foes);
+        foes.clear();
+        foes.extend((0..game.tanks.len()).filter(|&i| {
+            let o = &game.tanks[i];
+            o.alive && i != ti && (radar || !o.has(Eff::Invis))
+        }));
         self.plan_in -= TICK;
         if self.plan_in <= 0.0 {
             self.plan_in = BOT_PLAN;
@@ -199,11 +206,14 @@ impl Bot {
         if let Some(rc) = game.shots.iter().find(|s| s.owner == self.slot && s.kind == Kind::Rc) {
             if t.has(Eff::Steer) {
                 // Fernlenkrakete zum Gegner steuern
-                return (self.steer_rc(game, rc, &foes), self.fires);
+                let keys = self.steer_rc(game, rc, &foes);
+                self.foes = foes;
+                return (keys, self.fires);
             }
         }
         let mut keys = self.drive(game, ti);
         let (press, hold) = self.fire(game, ti, &foes);
+        self.foes = foes;
         if hold {
             keys |= SHOOT;
         }
@@ -218,7 +228,10 @@ impl Bot {
     fn plan(&mut self, game: &Game, ti: usize, foes: &[usize]) {
         let arena = &game.arena;
         let t = &game.tanks[ti];
-        let (dist, prev) = arena.bfs(arena.cell(t.x, t.y));
+        // Puffer ausleihen (plan hält self sonst gemischt belegt) und am Ende zurückgeben
+        let mut dist = std::mem::take(&mut self.dist);
+        let mut prev = std::mem::take(&mut self.prev);
+        arena.bfs_into(arena.cell(t.x, t.y), &mut dist, &mut prev);
         let steps = |x: f64, y: f64| -> u32 {
             let d = dist[arena.cell_index(arena.cell(x, y))];
             if d == u32::MAX {
@@ -282,6 +295,8 @@ impl Bot {
             }
             self.path.reverse();
         }
+        self.dist = dist;
+        self.prev = prev;
         self.aim = None;
         if let Some(ti2) = nearest {
             if threat.is_none() {

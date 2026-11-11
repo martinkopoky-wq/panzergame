@@ -307,8 +307,18 @@ impl Game {
         self.fx.retain(|f| f.age <= f.life);
 
         // Rundenende: sobald es entschieden ist, kurz Zeitlupe
-        let alive = self.alive_slots();
-        if self.end_timer.is_none() && alive.len() <= 1 {
+        // (nur Anzahl und erster Überlebender zählen: vorher pro Tick einen Vec sammeln)
+        let mut alive_n = 0usize;
+        let mut first_alive = usize::MAX;
+        for t in &self.tanks {
+            if t.alive {
+                alive_n += 1;
+                if first_alive == usize::MAX {
+                    first_alive = t.slot;
+                }
+            }
+        }
+        if self.end_timer.is_none() && alive_n <= 1 {
             self.end_timer = Some(ROUND_END_DELAY);
             self.slowmo(SLOWMO_TIME);
         }
@@ -316,7 +326,8 @@ impl Game {
             let et = et - dt;
             self.end_timer = Some(et);
             if et < ROUND_END_DELAY - 1.0 {
-                if let Some(&w) = alive.first() {
+                if first_alive != usize::MAX {
+                    let w = first_alive;
                     let n = if self.last_winner == Some(w) { self.streak[w] + 1 } else { 1 };
                     self.win = Some(Win { slot: Some(w), streak: n });
                 } else {
@@ -324,8 +335,8 @@ impl Game {
                 }
             }
             if et <= 0.0 {
-                if alive.len() == 1 {
-                    let w = alive[0];
+                if alive_n == 1 {
+                    let w = first_alive;
                     self.scores[w] += 1;
                     self.streak[w] = if self.last_winner == Some(w) { self.streak[w] + 1 } else { 1 };
                     self.last_winner = Some(w);

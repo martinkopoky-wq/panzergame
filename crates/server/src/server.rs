@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use panzer_core::bot::Bot;
 use panzer_core::codec::{write_snap, Reader, Writer};
 use panzer_core::consts::*;
+use panzer_core::items::Eff;
 use panzer_core::net::{split, RelIn, RelOut, MAX_PAYLOAD};
 use panzer_core::proto::*;
 use panzer_core::rng::Rng;
@@ -99,6 +100,14 @@ pub struct Server {
     review_timer: f64,
     /// Runde, für die in_game/Bots zuletzt abgeglichen wurden
     round_seen: u32,
+    /// kodiertes Labyrinth der laufenden Runde ((maze_id, rev), Bytes); wird nur bei
+    /// Änderung neu geklont und kodiert, nicht jeden Tick
+    maze_msg: Option<((u32, u16), Vec<u8>)>,
+    /// Schreibpuffer für Snapshots und Fragmente (verhindert pro Tick neue Allokationen)
+    wbuf: Writer,
+    fbuf: Writer,
+    /// Eingaben eines Ticks (take_tick_into)
+    cmd_buf: Vec<(u32, Cmd, f64)>,
 }
 
 /// wen ein Befehl meint: Konsole oder Spieler (Index in clients)
@@ -128,6 +137,10 @@ impl Server {
             players_timer: 0.0,
             review_timer: 0.0,
             round_seen: 0,
+            maze_msg: None,
+            wbuf: Writer { buf: Vec::with_capacity(1536) },
+            fbuf: Writer { buf: Vec::with_capacity(1536) },
+            cmd_buf: Vec::new(),
         })
     }
 
@@ -192,15 +205,22 @@ impl Server {
         // Eingaben im Takt abarbeiten (Zeitbudget gegen Speedhacks)
         if let Some(game) = self.game.as_mut() {
             for c in self.clients.iter_mut() {
-                for (_, cmd, dt) in c.guard.take_tick() {
+                c.guard.take_tick_into(&mut self.cmd_buf);
+                for &(_, cmd, dt) in self.cmd_buf.iter() {
                     if c.in_game {
                         game.apply_input(c.slot, cmd.keys, cmd.fires, dt);
                     }
                 }
             }
-            let humans: Vec<usize> = self.clients.iter().filter(|c| c.in_game).map(|c| c.slot).collect();
+            // Slots der mitspielenden Menschen als Bitmaske (statt Vec pro Tick)
+            let mut human_bits = 0u64;
+            for c in self.clients.iter() {
+                if c.in_game {
+                    human_bits |= 1u64 << c.slot;
+                }
+            }
             for (&slot, bot) in self.bots.iter_mut() {
-                if game.players.contains(&slot) && !humans.contains(&slot) {
+                if game.players.contains(&slot) && human_bits & (1u64 << slot) == 0 {
                     let (k, f) = bot.think(game);
                     game.apply_input(slot, k, f, TICK);
                 }
@@ -211,7 +231,7 @@ impl Server {
             }
         } else {
             for c in self.clients.iter_mut() {
-                c.guard.take_tick();
+                c.guard.take_tick_into(&mut self.cmd_buf);
             }
         }
         self.review_timer += TICK;
@@ -792,20 +812,40 @@ impl Server {
 
     fn send_snapshots(&mut self, now: Instant) {
         let lobby_time = (self.start.elapsed().as_secs_f64() * 1000.0) as u32;
-        let maze = self.game.as_ref().map(|g| ((g.maze_id, g.maze.rev), Msg::Maze(g.maze.clone()).encode()));
+        // Labyrinth nur bei Änderung neu kodieren (früher: jeder Tick Klonen + Encodieren)
+        let key = self.game.as_ref().map(|g| (g.maze_id, g.maze.rev));
+        if key != self.maze_msg.as_ref().map(|m| m.0) {
+            self.maze_msg = match key {
+                Some(k) => {
+                    let g = self.game.as_ref().unwrap();
+                    Some((k, Msg::Maze(g.maze.clone()).encode()))
+                }
+                None => None,
+            };
+        }
+        // Ohne Nebel und Tarnkappen ist der Snapshot für alle gleich: einmal bauen und
+        // kopieren statt pro Client neu rechnen (mit Verstecktem gilt das nicht, dort
+        // wie bisher pro Client)
+        let shared = self.game.as_ref().and_then(|g| {
+            let hides = g.mutator == Some(Mutator::Nebel)
+                || g.tanks.iter().any(|t| t.alive && t.has(Eff::Invis));
+            (!hides).then(|| g.net_snap(None, true))
+        });
         for ci in 0..self.clients.len() {
             let c = &mut self.clients[ci];
-            if let Some((key, data)) = &maze {
+            if let Some((key, data)) = &self.maze_msg {
                 if c.maze_sent != Some(*key) {
                     c.maze_sent = Some(*key);
                     c.rel_out.push(data.clone());
                 }
             }
-            let mut snap = match &self.game {
+            let mut snap = match (&self.game, &shared) {
                 // Wartende schauen zu, sehen aber auch nichts Verstecktes
-                Some(g) if c.in_game => g.net_snap(Some(c.slot), true),
-                Some(g) => NetSnap { queued: true, ..g.net_snap(None, true) },
-                None => NetSnap { time: lobby_time, et: u16::MAX, ..Default::default() },
+                (Some(_), Some(s)) if c.in_game => s.clone(),
+                (Some(_), Some(s)) => NetSnap { queued: true, ..s.clone() },
+                (Some(g), None) if c.in_game => g.net_snap(Some(c.slot), true),
+                (Some(g), None) => NetSnap { queued: true, ..g.net_snap(None, true) },
+                (None, _) => NetSnap { time: lobby_time, et: u16::MAX, ..Default::default() },
             };
             snap.ack = c.guard.done_seq;
             c.snap_seq += 1;
@@ -817,10 +857,11 @@ impl Server {
                 rel_ack: c.rel_in.ack(),
                 rel: c.rel_out.collect(now, 900),
             };
-            let mut w = Writer::new();
+            let w = &mut self.wbuf;
+            w.buf.clear();
             w.u8(S_SNAP);
-            head.write(&mut w);
-            write_snap(&mut w, &snap, base.map(|b| b.1));
+            head.write(w);
+            write_snap(w, &snap, base.map(|b| b.1));
             if w.len() <= MAX_PAYLOAD + 64 {
                 let _ = self.sock.send_to(&w.buf, c.addr);
             } else {
@@ -828,7 +869,8 @@ impl Server {
                 let body = &w.buf[1..];
                 let parts = split(body);
                 for (i, p) in parts.iter().enumerate() {
-                    let mut f = Writer::new();
+                    let f = &mut self.fbuf;
+                    f.buf.clear();
                     f.u8(S_FRAG);
                     f.var(seq as u64);
                     f.u8(i as u8);

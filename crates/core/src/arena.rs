@@ -34,21 +34,25 @@ impl Arena {
         let walls = maze.walls();
         let (cols, rows) = (maze.cols, maze.rows);
         let (ox, oy) = (maze.ox as f64, maze.oy as f64);
-        let mut grid = Vec::with_capacity(rows * cols);
-        for r in 0..rows {
-            for c in 0..cols {
-                let x0 = ox + c as f64 * CELL - MARGIN;
-                let y0 = oy + r as f64 * CELL - MARGIN;
-                let x1 = x0 + CELL + 2.0 * MARGIN;
-                let y1 = y0 + CELL + 2.0 * MARGIN;
-                grid.push(
-                    walls
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, w)| w[0] < x1 && w[0] + w[2] > x0 && w[1] < y1 && w[1] + w[3] > y0)
-                        .map(|(i, _)| i as u16)
-                        .collect(),
-                );
+        // Wand zuerst statt Zell-Schleife: jede Wand nur in die Zellen, die sie wirklich
+        // berührt (vorher: jede Zelle gegen alle Wände, bei jedem Wand-Umbau neu).
+        // Pro Zelle entstehen dieselben aufsteigenden Index-Listen wie vorher.
+        let mut grid: Vec<Vec<u16>> = vec![Vec::new(); rows * cols];
+        for (i, w) in walls.iter().enumerate() {
+            let c0 = (((w[0] - MARGIN - ox) / CELL).floor() as i64).clamp(0, cols as i64 - 1);
+            let c1 = (((w[0] + w[2] + MARGIN - ox) / CELL).floor() as i64).clamp(0, cols as i64 - 1);
+            let r0 = (((w[1] - MARGIN - oy) / CELL).floor() as i64).clamp(0, rows as i64 - 1);
+            let r1 = (((w[1] + w[3] + MARGIN - oy) / CELL).floor() as i64).clamp(0, rows as i64 - 1);
+            for r in r0..=r1 {
+                for c in c0..=c1 {
+                    let x0 = ox + c as f64 * CELL - MARGIN;
+                    let y0 = oy + r as f64 * CELL - MARGIN;
+                    let x1 = x0 + CELL + 2.0 * MARGIN;
+                    let y1 = y0 + CELL + 2.0 * MARGIN;
+                    if w[0] < x1 && w[0] + w[2] > x0 && w[1] < y1 && w[1] + w[3] > y0 {
+                        grid[r as usize * cols + c as usize].push(i as u16);
+                    }
+                }
             }
         }
         let mut nbrs = vec![Vec::new(); rows * cols];
@@ -64,8 +68,12 @@ impl Arena {
                     } else {
                         (ox + c as f64 * CELL + CELL / 2.0, oy + r2 as f64 * CELL)
                     };
-                    let blocked =
-                        walls.iter().any(|w| w[0] <= px && px <= w[0] + w[2] && w[1] <= py && py <= w[1] + w[3]);
+                    // die Trennwand trifft genau in die Zelle (r, c) -> reicht fürs Prüfen
+                    // (Auftreffe liegen wie oben immer innerhalb ihres Randes MARGIN)
+                    let blocked = grid[r * cols + c].iter().any(|&i| {
+                        let w = &walls[i as usize];
+                        w[0] <= px && px <= w[0] + w[2] && w[1] <= py && py <= w[1] + w[3]
+                    });
                     if !blocked {
                         nbrs[r * cols + c].push((r2, c2));
                         nbrs[r2 * cols + c2].push((r, c));
@@ -133,46 +141,72 @@ impl Arena {
     }
 
     /// Kürzester Weg von start nach goal (inklusive beider), [start] wenn es keinen gibt.
+    /// Arbeitslisten liegen pro Thread bereit: läuft pro Lenkrakete und Schwarm-Marker
+    /// jeden Tick, die Rückgabe bleibt ein frischer Vec.
     pub fn path(&self, start: Cell, goal: Cell) -> Vec<Cell> {
         let n = self.rows * self.cols;
-        let mut prev: Vec<Option<usize>> = vec![None; n];
-        let mut seen = vec![false; n];
-        let si = self.cell_index(start);
-        let gi = self.cell_index(goal);
-        seen[si] = true;
-        let mut q = VecDeque::from([start]);
-        while let Some(cur) = q.pop_front() {
-            if cur == goal {
-                break;
-            }
-            for &nb in self.neighbours(cur) {
-                let ni = self.cell_index(nb);
-                if !seen[ni] {
-                    seen[ni] = true;
-                    prev[ni] = Some(self.cell_index(cur));
-                    q.push_back(nb);
+        thread_local! {
+            static SCRATCH: std::cell::RefCell<(Vec<u32>, Vec<u8>, VecDeque<Cell>)> = Default::default();
+        }
+        let mut out = SCRATCH.with(|s| {
+            let (prev, seen, q) = &mut *s.borrow_mut();
+            prev.clear();
+            prev.resize(n, u32::MAX);
+            seen.clear();
+            seen.resize(n, 0);
+            q.clear();
+            let si = self.cell_index(start);
+            let gi = self.cell_index(goal);
+            seen[si] = 1;
+            q.push_back(start);
+            while let Some(cur) = q.pop_front() {
+                if cur == goal {
+                    break;
+                }
+                for &nb in self.neighbours(cur) {
+                    let ni = self.cell_index(nb);
+                    if seen[ni] == 0 {
+                        seen[ni] = 1;
+                        prev[ni] = self.cell_index(cur) as u32;
+                        q.push_back(nb);
+                    }
                 }
             }
+            if seen[gi] == 0 {
+                return Vec::new();
+            }
+            let mut out = vec![goal];
+            let mut cur = gi;
+            while prev[cur] != u32::MAX {
+                let p = prev[cur] as usize;
+                out.push((p / self.cols, p % self.cols));
+                cur = p;
+            }
+            out.reverse();
+            out
+        });
+        if out.is_empty() {
+            out.push(start);
         }
-        if !seen[gi] {
-            return vec![start];
-        }
-        let mut out = vec![goal];
-        let mut cur = gi;
-        while let Some(p) = prev[cur] {
-            out.push((p / self.cols, p % self.cols));
-            cur = p;
-        }
-        out.reverse();
         out
     }
 
     /// Schritte von start zu jeder Zelle und Vorgänger (für die Wege der Bots).
     /// dist[i] = u32::MAX, wenn nicht erreichbar.
     pub fn bfs(&self, start: Cell) -> (Vec<u32>, Vec<Option<usize>>) {
+        let mut dist = Vec::new();
+        let mut prev = Vec::new();
+        self.bfs_into(start, &mut dist, &mut prev);
+        (dist, prev)
+    }
+
+    /// wie bfs, aber in wiederverwendete Puffer (Bots planen alle 0,3 s)
+    pub fn bfs_into(&self, start: Cell, dist: &mut Vec<u32>, prev: &mut Vec<Option<usize>>) {
         let n = self.rows * self.cols;
-        let mut dist = vec![u32::MAX; n];
-        let mut prev = vec![None; n];
+        dist.clear();
+        dist.resize(n, u32::MAX);
+        prev.clear();
+        prev.resize(n, None);
         dist[self.cell_index(start)] = 0;
         let mut q = VecDeque::from([start]);
         while let Some(cur) = q.pop_front() {
@@ -186,7 +220,6 @@ impl Arena {
                 }
             }
         }
-        (dist, prev)
     }
 
     /// Erste Wand auf dem Strahl: (Strecke, Achse) bzw. (length, None).
