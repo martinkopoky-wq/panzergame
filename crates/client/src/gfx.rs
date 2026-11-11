@@ -338,6 +338,7 @@ impl Gfx {
         let d = self.measure(text, size, title);
         let x = cx - d.width / 2.0;
         let base = cy - d.height / 2.0 + d.offset_y;
+        let plain = ow <= 0.0;
         let ow = (ow * scale).max(1.0);
         let sh = 2.0 + size / 22.0;
         let params = |color: Color| TextParams {
@@ -347,6 +348,11 @@ impl Gfx {
             color,
             ..Default::default()
         };
+        // UI headings use the existing display face without arcade effects.
+        if plain {
+            draw_text_ex(text, x, base, params(cola(c, alpha)));
+            return d.width;
+        }
         draw_text_ex(text, x + sh, base + sh, params(Color::new(0.0, 0.0, 0.0, 0.47 * alpha)));
         let edge = Color::new(12.0 / 255.0, 12.0 / 255.0, 18.0 / 255.0, alpha);
         let n = if ow > 2.0 { 12 } else { 8 };

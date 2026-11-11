@@ -124,6 +124,8 @@ pub struct Renderer {
     pub crop: Option<Rect>,
     /// Feste Aufnahmezeit für reproduzierbare Showcase-Animationen; im Spiel echte Zeit.
     pub scene_time: Option<f64>,
+    /// Menu arena preview in virtual screen coordinates. Gameplay keeps its full viewport.
+    pub preview_rect: Option<Rect>,
     cine: f32,
     my_eff: Effects,
     me: Option<usize>,
@@ -174,6 +176,7 @@ impl Renderer {
             focus: None,
             crop: None,
             scene_time: None,
+            preview_rect: None,
             cine: 0.0,
             my_eff: Effects::default(),
             me: None,
@@ -193,6 +196,7 @@ impl Renderer {
         self.maze = None;
         self.round_id = None;
         self.scene_time = None;
+        self.preview_rect = None;
         self.scores_seen = [None; MAX_PLAYERS];
         self.score_pop = [None; MAX_PLAYERS];
         self.trauma = 0.0;
@@ -299,7 +303,7 @@ impl Renderer {
         } else if self.maze.as_ref().is_some_and(|m| m.rev != arena.rev) {
             self.walls_changed(arena);
         }
-        g.dark = live && arena.mutator == Some(Mutator::Dunkel);
+        g.dark = live && self.preview_rect.is_none() && arena.mutator == Some(Mutator::Dunkel);
         g.light_log.clear();
         self.world_w = arena.ww as f32;
         if live {
@@ -348,7 +352,20 @@ impl Renderer {
             src.x = (fx - src.w / 2.0).clamp(0.0, ww - src.w);
             src.y = (fy - src.h / 2.0).clamp(0.0, wh - src.h);
         }
-        set_camera(&lay.world_camera(src, shake));
+        let camera = if let Some(dest) = self.preview_rect {
+            let mut c = Camera2D::from_display_rect(src);
+            c.zoom.y = -c.zoom.y;
+            c.viewport = Some((
+                (lay.ox + dest.x * lay.scale) as i32,
+                (screen_height() - lay.oy - dest.bottom() * lay.scale) as i32,
+                (dest.w * lay.scale) as i32,
+                (dest.h * lay.scale) as i32,
+            ));
+            c
+        } else {
+            lay.world_camera(src, shake)
+        };
+        set_camera(&camera);
         if let Some(m) = &self.maze {
             draw_texture_ex(
                 &m.tex,
@@ -410,7 +427,7 @@ impl Renderer {
             }
             self.draw_fx_ui(g, view);
             g.flush_light(); // Lichter der Anzeigen (Krone, Kartoffel)
-            if arena.mutator == Some(Mutator::Nebel) {
+            if arena.mutator == Some(Mutator::Nebel) && self.preview_rect.is_none() {
                 self.draw_fog(g, arena, view);
             } else if g.dark {
                 self.darkness(g, arena, view, now, lay, src, shake);
@@ -426,6 +443,9 @@ impl Renderer {
 
         // --- Bildschirm ---
         set_camera(&lay.screen_camera());
+        if self.preview_rect.is_some() {
+            return;
+        }
         self.overlays(g, if live { Some(view) } else { None }, f.me, now, dt);
         if live && f.hud {
             self.draw_banners(g, view, arena, f.roster, now);

@@ -12,8 +12,9 @@ use panzer_core::Arena;
 
 use super::{leader, Renderer, Roster};
 use crate::gfx::*;
-use crate::raster::{mix, shade};
+use crate::raster::mix;
 use crate::sprites::box_color;
+use crate::theme;
 
 impl Renderer {
     /// Bildschirm-Effekte: Blitz, Zeitlupen-Balken, Gefahr am Rand
@@ -72,13 +73,17 @@ impl Renderer {
         cy: f32,
         scale: f32,
         alpha: f32,
-        glow: bool,
+        _glow: bool,
     ) {
-        if glow && alpha > 0.05 {
-            g.text_glow(text, cx, cy, size * scale.max(0.05), c, 8.0 * alpha, true);
-            g.flush_light();
-        }
-        g.fancy(text, cx, cy, size, c, 3.0, true, alpha, scale.max(0.05));
+        let width = g.measure(text, size * scale.max(0.05), true).width;
+        draw_rectangle(
+            cx - width / 2.0 - 16.0,
+            cy - size * scale / 2.0 - 8.0,
+            width + 32.0,
+            size * scale + 16.0,
+            cola([28, 31, 30], alpha * 0.88),
+        );
+        g.fancy(text, cx, cy, size, c, 0.0, true, alpha, scale.max(0.05));
     }
 
     pub(super) fn draw_banners(&mut self, g: &mut Gfx, view: &View, arena: &Arena, roster: &Roster, now: f64) {
@@ -101,12 +106,12 @@ impl Renderer {
         }
         if t < 2.0 && view.win.is_none() {
             // Rundenstart
-            let k_in = ease_back(t / 0.35);
+            let k_in = ease_out(t / 0.35);
             let fade = ((2.0 - t) / 0.5).clamp(0.0, 1.0);
             self.banner(
                 g,
-                &format!("RUNDE {}", view.maze_id),
-                64.0,
+                &format!("Runde {}", view.maze_id),
+                48.0,
                 [255, 255, 255],
                 cx,
                 cy - 40.0,
@@ -114,16 +119,16 @@ impl Renderer {
                 fade,
                 true,
             );
-            g.fancy(&th.name.to_uppercase(), cx, cy + 2.0, 22.0, th.accent, 2.0, true, fade, 1.0);
+            g.fancy(th.name, cx, cy + 2.0, 22.0, th.accent, 1.0, false, fade, 1.0);
             if let Some(m) = arena.mutator {
                 self.banner(
                     g,
-                    &format!("{}!", m.name().to_uppercase()),
-                    44.0,
-                    [200, 120, 255],
+                    m.name(),
+                    32.0,
+                    theme::YELLOW,
                     cx,
                     cy + 48.0,
-                    0.6 + 0.4 * ease_back((t - 0.25) / 0.35),
+                    0.6 + 0.4 * ease_out((t - 0.25) / 0.35),
                     fade,
                     true,
                 );
@@ -275,26 +280,38 @@ impl Renderer {
         roster: &Roster,
         now: f64,
     ) {
-        // Hintergrund mit Verlauf
-        let top = VIEW;
-        let hh = VH - VIEW;
-        for i in 0..8 {
-            let k = i as f32 / 8.0;
-            draw_rectangle(0.0, top + hh * k, VW, hh / 8.0 + 1.0, col(mix([22, 24, 32], [10, 11, 15], k)));
-        }
-        draw_line(0.0, top, VW, top, 1.0, col([56, 62, 80]));
-        let n = view.tanks.len().max(1);
+        draw_rectangle(0.0, VIEW, VW, VH - VIEW, col(theme::DECK));
+        draw_rectangle(0.0, VH - 20.0, VW, 20.0, col(theme::PAPER));
+        draw_line(0.0, VIEW, VW, VIEW, 1.0, col(theme::DECK_RAISED));
         let bp = bullet_params(arena.mutator);
         let lead = leader(view);
-        let gap = if n <= 4 { 8.0 } else { 5.0 };
-        let cw = (VW - 20.0 - gap * (n as f32 - 1.0)) / n as f32;
-        let (ctop, ch) = (VIEW + 7.0, VH - VIEW - 28.0);
-        for (k, tank) in view.tanks.iter().enumerate() {
-            let rect = Rect::new((10.0 + k as f32 * (cw + gap)).round(), ctop, cw.round(), ch);
-            self.card(g, rect, tank, view, me, lead, roster, bp.most, bp.life as f32, now);
+        let mut tanks: Vec<&TankView> = view.tanks.iter().collect();
+        if let Some(slot) = me {
+            tanks.sort_by_key(|t| (Some(t.slot) != Some(slot), t.slot));
+        }
+        let n = tanks.len().max(1);
+        let gap = 8.0;
+        let available = VW - 24.0 - gap * (n as f32 - 1.0);
+        let own_width = if me.is_some() && n > 1 { 272.0 } else { 0.0 };
+        let weight: f32 = tanks.iter().map(|t| if me.is_none() && !view.is_bot(t.slot) { 2.0 } else { 1.0 }).sum();
+        let mut x: f32 = 12.0;
+        for tank in tanks {
+            let featured = Some(tank.slot) == me || (me.is_none() && !view.is_bot(tank.slot));
+            let width = if own_width > 0.0 {
+                if Some(tank.slot) == me {
+                    own_width
+                } else {
+                    (available - own_width) / (n - 1) as f32
+                }
+            } else {
+                available * if featured { 2.0 } else { 1.0 } / weight.max(1.0)
+            };
+            let rect = Rect::new(x.round(), VIEW + 8.0, width.floor(), VH - VIEW - 32.0);
+            self.card(g, rect, tank, view, me, featured, lead, roster, bp.most, bp.life as f32, now);
             if let Some(w) = tank.weapon {
                 self.weapon_help.insert(tank.slot, (w, now));
             }
+            x += width + gap;
         }
         // Die Hilfe bleibt auch nach dem letzten Schuss sichtbar, solange die Waffe wirkt.
         if let Some(tk) = me.or(if self.quiet { Some(0) } else { None }).and_then(|slot| view.tank(slot)) {
@@ -323,171 +340,124 @@ impl Renderer {
     fn card(
         &self,
         g: &mut Gfx,
-        rect: Rect,
+        r: Rect,
         tk: &TankView,
         view: &View,
         me: Option<usize>,
+        featured: bool,
         lead: Option<usize>,
         roster: &Roster,
         most: usize,
         life: f32,
         now: f64,
     ) {
-        let i = tk.slot.min(MAX_PLAYERS - 1);
-        let c = COLORS[i];
-        let compact = rect.w < 200.0;
-        let mine = Some(i) == me;
-        // Kartenhintergrund
-        draw_rectangle(rect.x, rect.y, rect.w, rect.h, col([26, 29, 38]));
-        draw_rectangle(rect.x + 6.0, rect.y + 2.0, rect.w - 12.0, rect.h / 2.0, Color::new(1.0, 1.0, 1.0, 0.025));
-        draw_rectangle_lines(
-            rect.x,
-            rect.y,
-            rect.w,
-            rect.h,
-            if mine { 2.0 } else { 1.0 },
-            col(if mine { shade(c, 0.9) } else { [50, 55, 70] }),
-        );
-        draw_rectangle(rect.x + 8.0, rect.y, rect.w - 16.0, 3.0, col(c));
-        let ix = rect.x + if compact { 25.0 } else { 31.0 };
-        let icon = if tk.alive { &g.spr.tanks[i] } else { &g.spr.wrecks[i] };
-        g.sprite(icon, ix, rect.y + rect.h / 2.0 + 1.0, 0.0, 1.15, WHITE);
-        if Some(i) == lead {
-            g.sprite(&g.spr.crown, ix, rect.y + 9.0, 0.0, 0.85, WHITE);
-        }
-        let score = view.scores[i];
-        let mut z = 1.0;
-        if let Some(pop) = self.score_pop[i] {
-            let e = (now - pop) as f32;
-            if e < 0.7 {
-                z = 1.0 + 0.8 * (1.0 - ease_out(e / 0.7));
-                g.light(ACCENT_C, rect.x + rect.w - 30.0, rect.y + rect.h / 2.0, 40.0, 5.0 * (1.0 - e / 0.7));
-                g.flush_light();
-            }
-        }
-        let num = score.to_string();
-        let size = if compact { 34.0 } else { 42.0 };
-        let nw = g.measure(&num, size, true).width;
-        g.fancy(
-            &num,
-            rect.x + rect.w - 10.0 - nw / 2.0,
-            rect.y + rect.h / 2.0 + 2.0,
-            size,
-            if tk.alive { [255, 255, 255] } else { DIM_C },
-            3.0,
-            true,
-            1.0,
-            z,
-        );
-        let mut tags: Vec<&str> = Vec::new();
-        if mine {
-            tags.push("DU");
-        }
-        if view.is_bot(i) {
-            tags.push("BOT");
-        }
-        if roster.admin[i] {
-            tags.push("HOST");
-        }
-        let (row_x, row_y);
-        if compact {
-            row_x = rect.x + 52.0;
-            row_y = rect.y + 44.0;
-            for (j, tag) in tags.iter().enumerate() {
-                self.tag(g, tag, rect.x + 8.0 + 34.0 * j as f32, rect.y + 6.0, c);
-            }
-            let nm: String = roster.name(i).chars().take(9).collect();
-            g.text(&nm, rect.x + 52.0, rect.y + 22.0, 13.0, col(mix(c, [255, 255, 255], 0.35)), 0.0);
+        let slot = tk.slot.min(MAX_PLAYERS - 1);
+        let team = COLORS[slot];
+        let featured = featured && r.w >= 140.0;
+        if featured {
+            theme::plate(r, theme::DECK_RAISED, theme::DECK_RAISED);
+            draw_rectangle(r.x + 1.0, r.y + 8.0, 3.0, r.h - 16.0, col(team));
         } else {
-            let nm: String = roster.name(i).chars().take(14).collect();
-            let w = g.text(&nm, rect.x + 60.0, rect.y + 14.0, 15.0, col(mix(c, [255, 255, 255], 0.35)), 0.0);
-            let mut tx = rect.x + 66.0 + w;
-            for tag in tags {
-                tx += self.tag(g, tag, tx, rect.y + 7.0, c) + 4.0;
-            }
-            row_x = rect.x + 60.0;
-            row_y = rect.y + 31.0;
+            draw_line(r.x - 4.0, r.y + 8.0, r.x - 4.0, r.bottom() - 8.0, 1.0, col(theme::DECK_RAISED));
         }
+        let text = if tk.alive { theme::ON_DECK } else { theme::DECK_DIM };
+        let score = view.scores[slot].to_string();
+        let score_size = if featured { 24.0 } else { 22.0 };
+        if self.score_pop[slot].is_some_and(|at| now - at < 0.7) {
+            draw_rectangle(r.right() - 32.0, r.y + 35.0, 20.0, 2.0, col(theme::YELLOW));
+        }
+        g.text(&score, r.right() - 10.0, r.y + if featured { 13.0 } else { 29.0 }, score_size, col(text), 1.0);
+        let icon = if tk.alive { &g.spr.tanks[slot] } else { &g.spr.wrecks[slot] };
+        g.sprite(icon, r.x + 24.0, r.y + 22.0, -0.2, if featured { 1.0 } else { 0.7 }, WHITE);
+        if Some(slot) == lead {
+            g.sprite(&g.spr.crown, r.x + 24.0, r.y + 5.0, 0.0, 0.45, WHITE);
+        }
+        let name = if Some(slot) == me { format!("Du · {}", roster.name(slot)) } else { roster.name(slot) };
+        let name =
+            theme::fit(g, &name, if featured { 13.0 } else { 11.0 }, if featured { r.w - 104.0 } else { r.w - 12.0 });
+        g.text(
+            &name,
+            r.x + if featured { 48.0 } else { 4.0 },
+            r.y + if featured { 12.0 } else { 6.0 },
+            if featured { 13.0 } else { 11.0 },
+            col(theme::DECK_DIM),
+            0.0,
+        );
         if !tk.alive {
-            if !compact {
-                g.text("zerstört", row_x, row_y, 13.0, col(DIM_C), 0.0);
+            if featured {
+                g.text("Zerstört", r.x + 48.0, r.y + 35.0, 16.0, col(theme::DECK_DIM), 0.0);
             }
-        } else if let Some(w) = tk.weapon {
-            // Waffe mit Restmunition
-            g.sprite(&g.spr.badges[&w], row_x + 9.0, row_y + 3.0, 0.0, 0.9, WHITE);
-            let bw = if compact { 40.0 } else { 70.0 };
-            if w == panzer_core::items::Item::Rail || w == panzer_core::items::Item::Flame {
-                let frac = if w == panzer_core::items::Item::Rail {
-                    (tk.charge as f32 / RAIL_CHARGE as f32).min(1.0)
-                } else {
-                    tk.ammo as f32 / w.ammo() as f32
-                };
-                draw_rectangle(row_x + 24.0, row_y, bw, 6.0, col([46, 50, 62]));
-                let fc = if w == panzer_core::items::Item::Rail { [120, 220, 255] } else { [255, 140, 40] };
-                draw_rectangle(row_x + 24.0, row_y, bw * frac, 6.0, col(fc));
+            return;
+        }
+        let row_x = r.x + if featured { 48.0 } else { 6.0 };
+        let row_y = r.y + 48.0;
+        if let Some(w) = tk.weapon {
+            if featured {
+                let label = theme::fit(g, w.name(), 16.0, r.w - 60.0);
+                g.text(&label, row_x, r.y + 33.0, 16.0, col(text), 0.0);
+                g.sprite(&g.spr.badges[&w], r.x + 24.0, row_y, 0.0, 0.85, WHITE);
             } else {
-                let mut label = if compact { String::new() } else { w.name().to_string() };
-                if w.is_weapon() {
-                    label.push_str(&format!(" {}×", tk.ammo));
-                }
-                let label = label.trim();
-                if !label.is_empty() {
-                    g.text(label, row_x + 23.0, row_y + 3.0, 13.0, col([200, 205, 215]), 0.0);
-                }
+                g.sprite(&g.spr.badges[&w], row_x + 6.0, row_y, 0.0, 0.65, WHITE);
+            }
+            let ammo_x = row_x + if featured { 0.0 } else { 18.0 };
+            if w == panzer_core::items::Item::Rail {
+                g.text(
+                    if tk.charge > 0.0 {
+                        "Lädt"
+                    } else if featured {
+                        "Feuer halten"
+                    } else {
+                        "Rail"
+                    },
+                    ammo_x,
+                    row_y,
+                    11.0,
+                    col(theme::DECK_DIM),
+                    0.0,
+                );
+                let fraction = (tk.charge as f32 / RAIL_CHARGE as f32).clamp(0.0, 1.0);
+                let bw = if featured { 80.0 } else { (r.w - 20.0).max(8.0) };
+                draw_rectangle(r.x + 8.0, r.bottom() - 5.0, bw, 3.0, col(theme::DECK_RAISED));
+                draw_rectangle(r.x + 8.0, r.bottom() - 5.0, bw * fraction, 3.0, col([120, 220, 255]));
+            } else {
+                let label = if featured { format!("{} / {}", tk.ammo, w.ammo()) } else { format!("{}×", tk.ammo) };
+                g.text(&label, ammo_x, row_y, 12.0, col(theme::DECK_DIM), 0.0);
             }
         } else {
-            // freie Kugeln als leuchtende Punkte
+            if featured {
+                g.text("Bordkanone", row_x, r.y + 33.0, 16.0, col(text), 0.0);
+            }
+            let step = if featured { 10.0 } else { 6.0 };
             for b in 0..most {
-                let (bx, by) = (row_x + 4.0 + b as f32 * 11.0, row_y + 3.0);
-                if (b as i32) < tk.ammo {
-                    draw_circle(bx, by, 4.0, col(mix(c, [255, 255, 255], 0.5)));
-                    draw_circle(bx, by, 2.0, WHITE);
+                let x = row_x + b as f32 * step + 2.0;
+                let bright = (b as i32) < tk.ammo;
+                if bright {
+                    draw_circle(x, row_y, if featured { 3.0 } else { 2.0 }, col(team));
                 } else {
-                    draw_circle_lines(bx, by, 3.5, 1.0, col([70, 75, 90]));
+                    draw_circle_lines(x, row_y, if featured { 3.0 } else { 2.0 }, 1.0, col(theme::DECK_DIM));
                 }
             }
         }
-        if tk.alive {
-            // Effekte mit Restzeit
-            let mut ex = row_x;
-            let ey = row_y + 21.0;
-            let mut items: Vec<(panzer_core::items::Item, f32, f32)> = Vec::new();
-            if tk.shield > 0.0 {
-                items.push((panzer_core::items::Item::Shield, tk.shield as f32, SHIELD_TIME as f32));
-            }
-            for (e, v) in active_effects(&tk.eff) {
-                if !e.no_icon() {
-                    items.push((e.icon(), v as f32, e.full_time() as f32));
-                }
-            }
-            for (item, v, full) in items.into_iter().take(if compact { 2 } else { 4 }) {
-                draw_circle(ex + 8.0, ey, 8.0, col([228, 232, 240]));
-                g.sprite(&g.spr.icons[&item], ex + 8.0, ey, 0.0, 0.5, WHITE);
-                arc(ex + 8.0, ey, 10.0, -FRAC_PI_2, -FRAC_PI_2 - TAU * (v / full).min(1.0), 2.0, col(ACCENT_C));
-                ex += 24.0;
+        let mut effects = Vec::new();
+        if tk.shield > 0.0 {
+            effects.push((panzer_core::items::Item::Shield, tk.shield as f32, SHIELD_TIME as f32));
+        }
+        for (effect, value) in active_effects(&tk.eff) {
+            if !effect.no_icon() {
+                effects.push((effect.icon(), value as f32, effect.full_time() as f32));
             }
         }
-        if tk.reload > 0.0 && tk.alive && tk.weapon.is_none() {
-            let frac = 1.0 - (tk.reload as f32 / life).min(1.0);
-            draw_rectangle(rect.x + 8.0, rect.y + rect.h - 6.0, rect.w - 16.0, 3.0, col([40, 44, 56]));
-            draw_rectangle(rect.x + 8.0, rect.y + rect.h - 6.0, (rect.w - 16.0) * frac, 3.0, col(c));
+        for (j, (item, value, full)) in
+            effects.into_iter().take(if featured && r.w >= 220.0 { 4 } else { 2 }).enumerate()
+        {
+            let x = r.right() - 12.0 - j as f32 * 18.0;
+            g.sprite(&g.spr.icons[&item], x, row_y, 0.0, 0.5, WHITE);
+            arc(x, row_y, 7.0, -FRAC_PI_2, -FRAC_PI_2 - TAU * (value / full).min(1.0), 1.3, col(theme::DECK_DIM));
         }
-        if !tk.alive {
-            draw_rectangle(
-                rect.x,
-                rect.y,
-                rect.w,
-                rect.h,
-                Color::new(8.0 / 255.0, 9.0 / 255.0, 12.0 / 255.0, 110.0 / 255.0),
-            );
+        if tk.reload > 0.0 && tk.weapon.is_none() {
+            let fraction = 1.0 - (tk.reload as f32 / life).clamp(0.0, 1.0);
+            draw_rectangle(r.x + 8.0, r.bottom() - 5.0, r.w - 16.0, 2.0, col(theme::DECK_RAISED));
+            draw_rectangle(r.x + 8.0, r.bottom() - 5.0, (r.w - 16.0) * fraction, 2.0, col(team));
         }
-        let _ = box_color;
-    }
-
-    fn tag(&self, g: &Gfx, text: &str, x: f32, y: f32, c: [u8; 3]) -> f32 {
-        let w = g.measure(text, 12.0, false).width + 8.0;
-        draw_rectangle(x, y, w, 15.0, col(mix(c, [255, 255, 255], 0.35)));
-        g.text(text, x + 4.0, y + 7.5, 12.0, col([14, 15, 19]), 0.0);
-        w
     }
 }

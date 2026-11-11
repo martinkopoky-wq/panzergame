@@ -24,6 +24,7 @@ mod raster;
 mod render;
 mod showcase;
 mod sprites;
+mod theme;
 mod ui;
 
 use macroquad::prelude::*;
@@ -104,6 +105,14 @@ impl App {
 
     /// Hintergrund ohne eigenes Spiel: Bots kämpfen, darüber ein dunkler Schleier
     pub fn backdrop(&mut self) {
+        self.backdrop_to(None);
+    }
+
+    pub fn arena_preview(&mut self, rect: Rect) {
+        self.backdrop_to(Some(rect));
+    }
+
+    fn backdrop_to(&mut self, target: Option<Rect>) {
         if self.demo.as_ref().is_none_or(|d| d.game.maze_id > 40) {
             self.demo = Some(Demo::new());
             self.r.reset();
@@ -114,8 +123,17 @@ impl App {
         let view = demo.game.net_snap(None, false).view();
         let roster = Roster::local();
         let frame = Frame { arena: &demo.game.arena, view: &view, me: None, roster: &roster, quiet: true, hud: false };
+        self.r.preview_rect = target;
         self.r.draw(&mut self.g, &frame);
-        draw_rectangle(0.0, 0.0, VW, VH, Color::new(7.0 / 255.0, 8.0 / 255.0, 12.0 / 255.0, 150.0 / 255.0));
+        self.r.preview_rect = None;
+        let r = target.unwrap_or(Rect::new(0.0, 0.0, VW, VH));
+        draw_rectangle(
+            r.x,
+            r.y,
+            r.w,
+            r.h,
+            Color::new(7.0 / 255.0, 8.0 / 255.0, 12.0 / 255.0, if target.is_some() { 0.08 } else { 150.0 / 255.0 }),
+        );
     }
 
     /// Ende jedes Bildes: für Tests (PANZER_SHOT=datei.png, PANZER_SHOT_FRAMES=n)
@@ -192,7 +210,8 @@ async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     // Aufnahme für die Doku: panzer showcase <waffe> <ordner>
     if args.len() == 3 && args[0] == "showcase" {
-        let item = panzer_core::items::ALL_ITEMS.iter().copied().find(|i| format!("{i:?}").eq_ignore_ascii_case(&args[1]));
+        let item =
+            panzer_core::items::ALL_ITEMS.iter().copied().find(|i| format!("{i:?}").eq_ignore_ascii_case(&args[1]));
         let Some(item) = item else { panic!("unbekannte Waffe: {}", args[1]) };
         showcase::run(&mut app, item, &args[2]).await;
         app.cfg.save();

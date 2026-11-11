@@ -15,21 +15,24 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use eframe::egui::{
-    self, Align, Align2, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Layout, Margin, Mesh,
-    Pos2, Rect, RichText, Sense, Stroke, TextureHandle, TextureOptions, Vec2,
+    self, Align, Align2, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Layout, Margin, Pos2,
+    Rect, RichText, Sense, Stroke, TextureHandle, TextureOptions, Vec2,
 };
 use update::{human, Installed, Release};
 
 const WEBSITE: &str = "https://martinkopoky-wq.github.io/panzergame/";
 const GITHUB: &str = "https://github.com/martinkopoky-wq/panzergame";
 
-const BG: Color32 = Color32::from_rgb(13, 14, 18);
-const PANEL: Color32 = Color32::from_rgb(19, 21, 27);
-const LINE: Color32 = Color32::from_rgb(38, 42, 52);
-const TEXT: Color32 = Color32::from_rgb(232, 236, 244);
-const DIM: Color32 = Color32::from_rgb(138, 146, 164);
-const ACCENT: Color32 = Color32::from_rgb(255, 196, 60);
-const RED: Color32 = Color32::from_rgb(255, 110, 90);
+const BG: Color32 = Color32::from_rgb(247, 244, 235);
+const PANEL: Color32 = Color32::from_rgb(255, 253, 247);
+const LINE: Color32 = Color32::from_rgb(211, 208, 197);
+const TEXT: Color32 = Color32::from_rgb(39, 43, 42);
+const DIM: Color32 = Color32::from_rgb(91, 96, 90);
+const ACCENT: Color32 = Color32::from_rgb(245, 194, 62);
+const RED: Color32 = Color32::from_rgb(170, 49, 39);
+const DECK: Color32 = Color32::from_rgb(29, 35, 36);
+const DECK_TEXT: Color32 = Color32::from_rgb(242, 239, 226);
+const DECK_DIM: Color32 = Color32::from_rgb(168, 181, 178);
 
 /// Datenordner: hier landen Spiel, Downloads und Einstellungen des Launchers
 fn data_dir() -> PathBuf {
@@ -76,6 +79,13 @@ struct Shared {
     offline: Option<String>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Page {
+    Play,
+    Weapons,
+    News,
+}
+
 struct Launcher {
     data: PathBuf,
     shared: Arc<Mutex<Shared>>,
@@ -84,7 +94,8 @@ struct Launcher {
     close_on_play: bool,
     game: Option<Child>,
     /// Waffen-Doku statt Startbild
-    show_docs: bool,
+    page: Page,
+    local_game: Option<PathBuf>,
     docs: Option<Docs>,
 }
 
@@ -149,7 +160,29 @@ impl Launcher {
             p.insert(0, "body".into());
         }
         ctx.set_fonts(fonts);
-        ctx.set_visuals(egui::Visuals::dark());
+        let mut visuals = egui::Visuals::light();
+        visuals.override_text_color = Some(TEXT);
+        visuals.panel_fill = BG;
+        visuals.window_fill = PANEL;
+        visuals.faint_bg_color = BG;
+        visuals.extreme_bg_color = PANEL;
+        visuals.selection.bg_fill = ACCENT;
+        visuals.selection.stroke = Stroke::new(1.0, TEXT);
+        for widget in [&mut visuals.widgets.inactive, &mut visuals.widgets.hovered, &mut visuals.widgets.active] {
+            widget.corner_radius = CornerRadius::same(8);
+            widget.fg_stroke = Stroke::new(1.0, TEXT);
+            widget.bg_stroke = Stroke::new(1.0, LINE);
+        }
+        ctx.set_visuals_of(egui::Theme::Light, visuals);
+        ctx.set_theme(egui::Theme::Light);
+        ctx.style_mut_of(egui::Theme::Light, |s| {
+            s.text_styles.insert(egui::TextStyle::Small, FontId::proportional(12.0));
+            s.text_styles.insert(egui::TextStyle::Body, FontId::proportional(14.0));
+            s.text_styles.insert(egui::TextStyle::Button, FontId::proportional(14.0));
+            s.spacing.item_spacing = Vec2::new(8.0, 8.0);
+            s.spacing.button_padding = Vec2::new(12.0, 8.0);
+            s.spacing.interact_size.y = 32.0;
+        });
         let data = data_dir();
         let close_on_play = std::fs::read_to_string(data.join("launcher.json"))
             .ok()
@@ -172,7 +205,15 @@ impl Launcher {
             close_on_play,
             game: None,
             // --docs startet direkt in der Waffen-Doku (zum Testen und für Links)
-            show_docs: std::env::args().any(|a| a == "--docs"),
+            page: if std::env::args().any(|a| a == "--docs") { Page::Weapons } else { Page::Play },
+            local_game: if std::env::args().any(|a| a == "--local") {
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.join(if cfg!(windows) { "panzer.exe" } else { "panzer" })))
+                    .filter(|p| p.is_file())
+            } else {
+                None
+            },
             docs: None,
         };
         l.check(ctx.clone());
@@ -242,8 +283,17 @@ impl Launcher {
     }
 
     fn play(&mut self, ctx: &egui::Context) {
-        let Some(inst) = self.shared.lock().unwrap().installed.clone() else { return };
-        match Command::new(inst.exe()).current_dir(&inst.dir).spawn() {
+        let executable = if let Some(local) = &self.local_game {
+            local.clone()
+        } else {
+            let Some(inst) = self.shared.lock().unwrap().installed.clone() else { return };
+            inst.exe()
+        };
+        let mut command = Command::new(&executable);
+        if let Some(dir) = executable.parent() {
+            command.current_dir(dir);
+        }
+        match command.spawn() {
             Ok(child) => {
                 if self.close_on_play {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -258,73 +308,33 @@ impl Launcher {
     /// Bild füllend zeichnen (wie CSS object-fit: cover), mit Abdunklung nach links und unten
     fn hero(&self, ui: &mut egui::Ui, rect: Rect) {
         let p = ui.painter_at(rect);
-        p.rect_filled(rect, 0.0, BG);
+        p.rect_filled(rect, 8, DECK);
+        let image_rect = Rect::from_min_max(rect.min + Vec2::splat(8.0), rect.right_bottom() - Vec2::new(8.0, 76.0));
         if let Some(t) = &self.hero {
-            let (tw, th) = (t.size()[0] as f32, t.size()[1] as f32);
-            let k = (rect.width() / tw).max(rect.height() / th);
-            let (vw, vh) = (rect.width() / (tw * k), rect.height() / (th * k));
-            // Ausschnitt so, dass die Panzer rechts neben dem Text liegen
-            let uv = Rect::from_min_size(Pos2::new((1.0 - vw) * 0.2, (1.0 - vh) / 2.0), Vec2::new(vw, vh));
-            p.image(t.id(), rect, uv, Color32::from_gray(170));
+            let aspect = image_rect.width() / image_rect.height().max(1.0);
+            let source = t.size()[0] as f32 / t.size()[1] as f32;
+            let (uw, uh) = if aspect > source { (1.0, source / aspect) } else { (aspect / source, 1.0) };
+            let uv = Rect::from_min_size(Pos2::new((1.0 - uw) / 2.0, (1.0 - uh) / 2.0), Vec2::new(uw, uh));
+            p.add(egui::epaint::RectShape::filled(image_rect, 4, Color32::WHITE).with_texture(t.id(), uv));
         }
-        let mut mesh = Mesh::default();
-        let dark = Color32::from_rgba_unmultiplied(13, 14, 18, 245);
-        let clear = Color32::from_rgba_unmultiplied(13, 14, 18, 40);
-        // Verlauf von links (dunkel) nach rechts
-        mesh.colored_vertex(rect.left_top(), dark);
-        mesh.colored_vertex(rect.center_top() + Vec2::new(rect.width() * 0.2, 0.0), clear);
-        mesh.colored_vertex(rect.center_bottom() + Vec2::new(rect.width() * 0.2, 0.0), clear);
-        mesh.colored_vertex(rect.left_bottom(), dark);
-        mesh.add_triangle(0, 1, 2);
-        mesh.add_triangle(0, 2, 3);
-        p.add(mesh);
-        let mut mesh = Mesh::default();
-        let base = mesh.vertices.len() as u32;
-        mesh.colored_vertex(rect.left_bottom() - Vec2::new(0.0, rect.height() * 0.45), Color32::TRANSPARENT);
-        mesh.colored_vertex(rect.right_bottom() - Vec2::new(0.0, rect.height() * 0.45), Color32::TRANSPARENT);
-        mesh.colored_vertex(rect.right_bottom(), BG);
-        mesh.colored_vertex(rect.left_bottom(), BG);
-        mesh.add_triangle(base, base + 1, base + 2);
-        mesh.add_triangle(base, base + 2, base + 3);
-        p.add(mesh);
-
-        let x = rect.left() + 40.0;
-        let mut y = rect.top() + 46.0;
-        p.text(Pos2::new(x, y), Align2::LEFT_TOP, "01 / LABYRINTH-PANZERSCHLACHT", FontId::monospace(11.0), DIM);
-        y += 26.0;
+        let y = rect.bottom() - 45.0;
         p.text(
-            Pos2::new(x - 3.0, y),
-            Align2::LEFT_TOP,
-            "PANZER",
-            FontId::new(92.0, FontFamily::Name("title".into())),
-            TEXT,
+            Pos2::new(rect.left() + 24.0, y),
+            Align2::LEFT_CENTER,
+            "Kleine Panzer, große Querschläger",
+            FontId::proportional(21.0),
+            DECK_TEXT,
         );
-        y += 104.0;
-        for line in
-            ["Bis zu 8 Spieler über LAN und Internet,", "Bots, 93 Power-ups und jede Runde ein neues Labyrinth."]
-        {
-            p.text(
-                Pos2::new(x, y),
-                Align2::LEFT_TOP,
-                line,
-                FontId::proportional(16.0),
-                Color32::from_rgb(200, 205, 216),
-            );
-            y += 22.0;
-        }
-        y += 14.0;
         p.text(
-            Pos2::new(x, y),
-            Align2::LEFT_TOP,
-            "WINDOWS · MACOS · LINUX · KOSTENLOS · OPEN SOURCE",
-            FontId::monospace(11.0),
-            DIM,
+            Pos2::new(rect.left() + 24.0, y + 26.0),
+            Align2::LEFT_CENTER,
+            "Bis zu 8 Panzer · Lokal oder online · Neues Labyrinth pro Runde",
+            FontId::proportional(12.0),
+            DECK_DIM,
         );
     }
 
     fn news(&self, ui: &mut egui::Ui, release: Option<&Release>, offline: Option<&str>) {
-        ui.label(RichText::new("02 / NEUIGKEITEN").monospace().size(11.0).color(DIM));
-        ui.add_space(14.0);
         let Some(r) = release else {
             let text = offline.unwrap_or("Lade Neuigkeiten …");
             ui.label(RichText::new(text).color(DIM));
@@ -332,16 +342,16 @@ impl Launcher {
         };
         let title = if r.name.is_empty() { r.tag.clone() } else { r.name.clone() };
         ui.label(RichText::new(title).size(22.0).color(TEXT).family(FontFamily::Name("title".into())));
-        ui.label(RichText::new(format!("{} · {}", r.tag, r.date)).monospace().size(11.0).color(DIM));
-        ui.add_space(10.0);
+        ui.label(RichText::new(format!("{} · {}", r.tag, r.date)).monospace().size(12.0).color(DIM));
+        ui.add_space(12.0);
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             for line in r.body.lines() {
                 let l = line.trim();
                 if l.is_empty() {
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
                 } else if let Some(h) = l.strip_prefix('#') {
                     ui.add_space(4.0);
-                    ui.label(RichText::new(h.trim_start_matches('#').trim()).size(15.0).strong().color(ACCENT));
+                    ui.label(RichText::new(h.trim_start_matches('#').trim()).size(15.0).strong().color(TEXT));
                 } else if let Some(item) = l.strip_prefix("- ").or_else(|| l.strip_prefix("* ")) {
                     ui.label(RichText::new(format!("•  {}", item.replace("**", ""))).color(TEXT));
                 } else {
@@ -356,21 +366,27 @@ impl Launcher {
 fn big_button(ui: &mut egui::Ui, text: &str, filled: bool, enabled: bool) -> bool {
     let (fill, color) = if filled { (ACCENT, Color32::from_rgb(20, 18, 10)) } else { (Color32::TRANSPARENT, TEXT) };
     let color = if enabled { color } else { DIM };
-    let button =
-        egui::Button::new(RichText::new(text).size(20.0).color(color).family(FontFamily::Name("title".into())))
-            .fill(if enabled { fill } else { LINE })
-            .stroke(Stroke::new(1.0, if filled { ACCENT } else { LINE }))
-            .corner_radius(CornerRadius::same(2))
-            .min_size(Vec2::new(220.0, 54.0));
-    ui.add_enabled(enabled, button).clicked()
+    let button = egui::Button::new(RichText::new(text).size(18.0).color(color))
+        .fill(if enabled { fill } else { LINE })
+        .stroke(Stroke::new(1.0, if filled { ACCENT } else { LINE }))
+        .corner_radius(CornerRadius::same(4))
+        .min_size(Vec2::new(208.0, 56.0));
+    let response = ui.add_enabled(enabled, button);
+    if filled && enabled {
+        for j in 0..3 {
+            let at = response.rect.left_center() + Vec2::new(14.0 + j as f32 * 5.0, -4.0);
+            ui.painter().line_segment([at, at + Vec2::new(3.0, 9.0)], Stroke::new(1.5, TEXT));
+        }
+    }
+    response.clicked()
 }
 
 fn small_button(ui: &mut egui::Ui, text: &str) -> bool {
     ui.add(
-        egui::Button::new(RichText::new(text).monospace().size(11.0).color(DIM))
+        egui::Button::new(RichText::new(text).size(13.0).color(TEXT))
             .fill(Color32::TRANSPARENT)
             .stroke(Stroke::new(1.0, LINE))
-            .corner_radius(CornerRadius::same(2)),
+            .corner_radius(CornerRadius::same(8)),
     )
     .clicked()
 }
@@ -383,17 +399,27 @@ impl Launcher {
             self.docs = load_docs(&ctx);
         }
         let Some(docs) = self.docs.as_mut() else {
-            ui.label(RichText::new("Die Waffen-Doku konnte nicht geladen werden.").color(RED));
+            ui.label(RichText::new("Die Waffen-Doku konnte nicht geladen werden").color(RED));
             return;
         };
         ui.horizontal(|ui| {
-            for f in ["Alle", "Waffe", "Effekt", "Wundertüte"] {
-                if ui.selectable_label(docs.filter == f, f).clicked() {
-                    docs.filter = f;
+            for filter in ["Alle", "Waffe", "Effekt", "Wundertüte"] {
+                let count = docs.items.iter().filter(|i| filter == "Alle" || i.group == filter).count();
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new(format!("{filter}  {count}")).size(13.0).color(TEXT))
+                            .fill(if docs.filter == filter { ACCENT } else { PANEL })
+                            .stroke(Stroke::new(1.0, if docs.filter == filter { TEXT } else { LINE }))
+                            .corner_radius(CornerRadius::same(4))
+                            .min_size(Vec2::new(92.0, 36.0)),
+                    )
+                    .clicked()
+                {
+                    docs.filter = filter;
                 }
             }
         });
-        ui.add_space(8.0);
+        ui.add_space(16.0);
         let frame = ((ui.input(|i| i.time) * waffen_rows::FPS) as usize) % waffen_rows::COLS;
         ctx.request_repaint_after(Duration::from_millis(80));
         let filter = docs.filter;
@@ -402,48 +428,76 @@ impl Launcher {
                 if filter != "Alle" && item.group != filter {
                     continue;
                 }
-                // Zeile erst bei Bedarf dekodieren und als Textur halten
-                // Eine Zeile wird beim ersten Anzeigen in ihre Einzelbilder zerlegt (je ein Texturbild)
-                if docs.sheets[row].is_none() {
-                    if let Some(bytes) = waffen_rows::ROWS.get(row) {
-                        if let Ok(img) = image::load_from_memory(bytes) {
-                            let img = img.to_rgba8();
-                            let (fw, fh) = (img.width() / waffen_rows::COLS as u32, img.height());
-                            let frames: Vec<TextureHandle> = (0..waffen_rows::COLS as u32)
-                                .map(|c| {
-                                    let sub = image::imageops::crop_imm(&img, c * fw, 0, fw, fh).to_image();
-                                    let size = [fw as usize, fh as usize];
-                                    let color = egui::ColorImage::from_rgba_unmultiplied(size, sub.as_raw());
-                                    ctx.load_texture(format!("waffe{row}_{c}"), color, TextureOptions::LINEAR)
-                                })
-                                .collect();
-                            docs.sheets[row] = Some(frames);
+                let width = ui.available_width();
+                let preview_w = ((width - 48.0) * 0.45).clamp(220.0, 400.0);
+                let preview_h = preview_w * 218.0 / 320.0;
+                let height = preview_h.max(220.0) + 32.0;
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
+                // Only visible rows decode their per-frame textures; scrolling does not load all 93 at once.
+                if ui.is_rect_visible(rect) {
+                    if docs.sheets[row].is_none() {
+                        if let Some(bytes) = waffen_rows::ROWS.get(row) {
+                            if let Ok(img) = image::load_from_memory(bytes) {
+                                let img = img.to_rgba8();
+                                let (fw, fh) = (img.width() / waffen_rows::COLS as u32, img.height());
+                                docs.sheets[row] = Some(
+                                    (0..waffen_rows::COLS as u32)
+                                        .map(|c| {
+                                            let sub = image::imageops::crop_imm(&img, c * fw, 0, fw, fh).to_image();
+                                            ctx.load_texture(
+                                                format!("waffe{row}_{c}"),
+                                                egui::ColorImage::from_rgba_unmultiplied(
+                                                    [fw as usize, fh as usize],
+                                                    sub.as_raw(),
+                                                ),
+                                                TextureOptions::LINEAR,
+                                            )
+                                        })
+                                        .collect(),
+                                );
+                            }
                         }
                     }
-                }
-                ui.horizontal(|ui| {
-                    let Some(frames) = docs.sheets[row].as_ref() else {
-                        ui.add_space(320.0);
-                        return;
-                    };
-                    let tex = &frames[frame];
-                    ui.add(egui::Image::new(tex).fit_to_exact_size(egui::vec2(320.0, 218.0)));
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new(&item.name).strong().size(18.0).color(TEXT));
-                        ui.label(RichText::new(&item.group).small().color(DIM));
-                        ui.add_space(4.0);
-                        ui.label(RichText::new(&item.text).color(TEXT));
-                        if item.ammo > 0 {
-                            let ammo = match (item.ammo, item.group.as_str()) {
-                                (999, _) => "bis zur Rundenende".to_string(),
-                                (n, "Effekt") => format!("{n} s"),
-                                (n, _) => format!("{n}× Munition"),
-                            };
-                            ui.label(RichText::new(ammo).small().color(DIM));
-                        }
+                    ui.painter().rect_filled(rect, 8, PANEL);
+                    ui.painter().rect_stroke(rect, 8, Stroke::new(1.0, LINE), egui::StrokeKind::Inside);
+                    let inner = rect.shrink(16.0);
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+                        ui.horizontal(|ui| {
+                            if let Some(frames) = &docs.sheets[row] {
+                                ui.add(
+                                    egui::Image::new(&frames[frame]).fit_to_exact_size(Vec2::new(preview_w, preview_h)),
+                                );
+                            } else {
+                                ui.allocate_space(Vec2::new(preview_w, preview_h));
+                            }
+                            ui.add_space(16.0);
+                            ui.vertical(|ui| {
+                                ui.set_width((width - preview_w - 64.0).max(120.0));
+                                ui.label(
+                                    RichText::new(&item.name)
+                                        .size(22.0)
+                                        .color(TEXT)
+                                        .family(FontFamily::Name("title".into())),
+                                );
+                                let amount = match (item.ammo, item.group.as_str()) {
+                                    (999, _) => "bis zum Rundenende".to_string(),
+                                    (0, _) => String::new(),
+                                    (n, "Effekt") => format!("{n} Sekunden"),
+                                    (n, _) => format!("{n} Schuss"),
+                                };
+                                let meta = if amount.is_empty() {
+                                    item.group.clone()
+                                } else {
+                                    format!("{}  ·  {amount}", item.group)
+                                };
+                                ui.label(RichText::new(meta).size(12.0).color(DIM));
+                                ui.add_space(12.0);
+                                ui.label(RichText::new(&item.text).size(14.0).color(TEXT));
+                            });
+                        });
                     });
-                });
-                ui.add_space(14.0);
+                }
+                ui.add_space(12.0);
             }
         });
     }
@@ -452,7 +506,6 @@ impl Launcher {
 impl eframe::App for Launcher {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        // Läuft das Spiel noch?
         if let Some(child) = self.game.as_mut() {
             if !matches!(child.try_wait(), Ok(None)) {
                 self.game = None;
@@ -463,114 +516,141 @@ impl eframe::App for Launcher {
             let s = self.shared.lock().unwrap();
             (s.phase.clone(), s.release.clone(), s.installed.clone(), s.progress, s.error.clone(), s.offline.clone())
         };
-        let update_ready = match (&release, &installed) {
-            (Some(r), Some(i)) => r.tag != i.version,
-            (Some(_), None) => true,
-            _ => false,
-        };
-
-        egui::Panel::top("bar")
-            .exact_size(46.0)
-            .frame(egui::Frame::new().fill(BG).inner_margin(Margin::symmetric(16, 0)).stroke(Stroke::new(1.0, LINE)))
+        let local = self.local_game.is_some();
+        let update_ready = !local
+            && match (&release, &installed) {
+                (Some(r), Some(i)) => r.tag != i.version,
+                (Some(_), None) => true,
+                _ => false,
+            };
+        egui::Panel::left("navigation")
+            .exact_size(176.0)
+            .resizable(false)
+            .frame(egui::Frame::new().fill(DECK).inner_margin(Margin::symmetric(16, 24)))
             .show(ui, |ui| {
-                ui.horizontal_centered(|ui| {
+                ui.horizontal(|ui| {
                     if let Some(icon) = &self.icon {
-                        ui.add(egui::Image::new(icon).fit_to_exact_size(Vec2::splat(24.0)));
+                        ui.add(egui::Image::new(icon).fit_to_exact_size(Vec2::splat(28.0)));
                     }
-                    ui.label(RichText::new("PANZER").size(18.0).color(TEXT).family(FontFamily::Name("title".into())));
-                    ui.label(RichText::new("LAUNCHER").monospace().size(11.0).color(DIM));
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(
-                            RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).monospace().size(11.0).color(DIM),
-                        );
-                        if small_button(ui, if self.show_docs { "ZURÜCK" } else { "WAFFEN" }) {
-                            self.show_docs = !self.show_docs;
+                    ui.label(
+                        RichText::new("PANZER").size(23.0).family(FontFamily::Name("title".into())).color(DECK_TEXT),
+                    );
+                });
+                ui.add_space(32.0);
+                for (page, label) in [(Page::Play, "Spielen"), (Page::Weapons, "Waffen"), (Page::News, "Neuigkeiten")] {
+                    let selected = self.page == page;
+                    let response = ui.add_sized(
+                        Vec2::new(ui.available_width(), 44.0),
+                        egui::Button::new(RichText::new(label).size(15.0).color(if selected {
+                            TEXT
+                        } else {
+                            DECK_TEXT
+                        }))
+                        .fill(if selected { ACCENT } else { DECK })
+                        .stroke(Stroke::NONE)
+                        .corner_radius(CornerRadius::same(4)),
+                    );
+                    if selected {
+                        for j in 0..3 {
+                            let at = response.rect.left_center() + Vec2::new(9.0 + j as f32 * 4.0, -4.0);
+                            ui.painter().line_segment([at, at + Vec2::new(3.0, 8.0)], Stroke::new(1.5, TEXT));
                         }
-                        if small_button(ui, "GITHUB") {
-                            open(GITHUB);
+                    }
+                    if response.clicked() {
+                        self.page = page;
+                    }
+                    ui.add_space(4.0);
+                }
+                ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
+                    ui.label(
+                        RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).monospace().size(11.0).color(DECK_DIM),
+                    );
+                    ui.add_space(16.0);
+                    for (label, url) in [("Quellcode", GITHUB), ("Website", WEBSITE)] {
+                        if ui
+                            .add(
+                                egui::Button::new(RichText::new(label).size(12.0).color(DECK_DIM))
+                                    .fill(Color32::TRANSPARENT)
+                                    .stroke(Stroke::NONE),
+                            )
+                            .clicked()
+                        {
+                            open(url);
                         }
-                        if small_button(ui, "WEBSITE") {
-                            open(WEBSITE);
-                        }
-                    });
+                    }
                 });
             });
-
-        egui::Panel::bottom("actions")
-            .exact_size(104.0)
+        egui::Panel::bottom("launch_bay")
+            .exact_size(if self.page == Page::Play { 148.0 } else { 112.0 })
             .frame(
-                egui::Frame::new().fill(PANEL).inner_margin(Margin::symmetric(28, 16)).stroke(Stroke::new(1.0, LINE)),
+                egui::Frame::new().fill(PANEL).inner_margin(Margin::symmetric(24, 16)).stroke(Stroke::new(1.0, LINE)),
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    let left = (ui.available_width() - 240.0).max(240.0);
                     ui.vertical(|ui| {
-                        ui.set_width((ui.available_width() - 260.0).max(200.0));
-                        let (status, color) = match (&phase, &error) {
-                            (_, Some(e)) => (e.clone(), RED),
-                            (Phase::Checking, _) => ("Suche nach Updates …".to_string(), DIM),
-                            (Phase::Downloading, _) => {
-                                let (d, t) = progress;
-                                (
-                                    format!(
-                                        "Lade {} herunter … {} / {}",
-                                        release.as_ref().map_or("", |r| r.tag.as_str()),
-                                        human(d),
-                                        human(t)
-                                    ),
-                                    TEXT,
-                                )
+                        ui.set_width(left);
+                        let (status, color) = if let Some(error) = &error {
+                            (error.clone(), RED)
+                        } else if local {
+                            (format!("Lokaler Build · v{}", env!("CARGO_PKG_VERSION")), TEXT)
+                        } else {
+                            match (&phase, &error) {
+                                (_, Some(e)) => (e.clone(), RED),
+                                (Phase::Checking, _) => ("Suche nach Updates …".to_string(), DIM),
+                                (Phase::Downloading, _) => {
+                                    (format!("Download: {} / {}", human(progress.0), human(progress.1)), TEXT)
+                                }
+                                (Phase::Idle, None) => match (&installed, &release, &offline) {
+                                    (Some(i), Some(r), _) if r.tag == i.version => {
+                                        (format!("Bereit · {} ist aktuell", i.version), TEXT)
+                                    }
+                                    (Some(i), Some(r), _) => (format!("Update: {} auf {}", i.version, r.tag), TEXT),
+                                    (None, Some(r), _) => (format!("Noch nicht installiert · {}", r.tag), TEXT),
+                                    (Some(i), None, _) => (format!("Offline · installiert ist {}", i.version), DIM),
+                                    (None, None, Some(e)) => (e.clone(), RED),
+                                    _ => ("Noch keine Installation".to_string(), DIM),
+                                },
                             }
-                            (Phase::Idle, None) => match (&installed, &release, &offline) {
-                                (Some(i), Some(r), _) if r.tag == i.version => {
-                                    (format!("Bereit · {} ist aktuell", i.version), TEXT)
-                                }
-                                (Some(i), Some(r), _) => {
-                                    (format!("Update verfügbar: {} auf {}", i.version, r.tag), ACCENT)
-                                }
-                                (None, Some(r), _) => {
-                                    let size = r
-                                        .asset(&update::platform_asset())
-                                        .map_or(String::new(), |a| format!(" ({})", human(a.size)));
-                                    (format!("Noch nicht installiert · {}{size}", r.tag), TEXT)
-                                }
-                                (Some(i), None, _) => (format!("Offline · installiert ist {}", i.version), DIM),
-                                (None, None, Some(e)) => (e.clone(), RED),
-                                (None, None, None) => (String::new(), DIM),
-                            },
                         };
-                        if self.game.is_some() {
-                            ui.label(RichText::new("Das Spiel läuft …").size(15.0).color(ACCENT));
-                        } else {
-                            ui.label(RichText::new(status).size(15.0).color(color));
-                        }
+                        ui.label(
+                            RichText::new(if self.game.is_some() { "Das Spiel läuft" } else { &status })
+                                .size(15.0)
+                                .color(color),
+                        );
                         ui.add_space(8.0);
-                        if phase == Phase::Downloading {
-                            let (d, t) = progress;
-                            let f = if t > 0 { d as f32 / t as f32 } else { 0.0 };
-                            ui.add(
-                                egui::ProgressBar::new(f)
-                                    .desired_height(8.0)
-                                    .fill(ACCENT)
-                                    .corner_radius(CornerRadius::same(1)),
-                            );
+                        if phase == Phase::Downloading && !local {
+                            let fraction = if progress.1 > 0 { progress.0 as f32 / progress.1 as f32 } else { 0.0 };
+                            ui.add(egui::ProgressBar::new(fraction).desired_height(8.0).fill(ACCENT));
                         } else {
-                            ui.horizontal(|ui| {
-                                let busy = phase != Phase::Idle;
-                                if installed.is_some() && small_button(ui, "SPIELORDNER") {
-                                    if let Some(i) = &installed {
+                            ui.horizontal_wrapped(|ui| {
+                                if (installed.is_some() || local) && small_button(ui, "Spielordner") {
+                                    if let Some(path) = &self.local_game {
+                                        if let Some(dir) = path.parent() {
+                                            open(&dir.to_string_lossy());
+                                        }
+                                    } else if let Some(i) = &installed {
                                         open(&i.dir.to_string_lossy());
                                     }
                                 }
-                                if !busy && installed.is_some() && release.is_some() && small_button(ui, "REPARIEREN") {
+                                if !local
+                                    && phase == Phase::Idle
+                                    && installed.is_some()
+                                    && release.is_some()
+                                    && small_button(ui, "Reparieren")
+                                {
                                     self.install(ctx.clone());
                                 }
-                                if !busy
+                                if !local
+                                    && phase == Phase::Idle
                                     && (offline.is_some() || error.is_some())
-                                    && small_button(ui, "NOCHMAL VERSUCHEN")
+                                    && small_button(ui, "Erneut versuchen")
                                 {
                                     self.check(ctx.clone());
                                 }
-                                ui.add_space(6.0);
+                            });
+                            if self.page == Page::Play {
+                                ui.add_space(8.0);
                                 if ui
                                     .checkbox(
                                         &mut self.close_on_play,
@@ -580,52 +660,58 @@ impl eframe::App for Launcher {
                                 {
                                     self.save_settings();
                                 }
-                            });
+                            }
                         }
                     });
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let idle = phase == Phase::Idle && self.game.is_none();
-                        if update_ready {
-                            let label = if installed.is_some() { "AKTUALISIEREN" } else { "INSTALLIEREN" };
-                            if big_button(ui, label, true, idle) {
-                                self.install(ctx.clone());
+                        let idle = (local || phase == Phase::Idle) && self.game.is_none();
+                        let label = if update_ready {
+                            if installed.is_some() {
+                                "Aktualisieren"
+                            } else {
+                                "Installieren"
                             }
-                        } else if big_button(ui, "SPIELEN", true, idle && installed.is_some()) {
-                            self.play(&ctx);
+                        } else {
+                            "Spielen"
+                        };
+                        if big_button(ui, label, true, idle && (update_ready || local || installed.is_some())) {
+                            if update_ready {
+                                self.install(ctx.clone());
+                            } else {
+                                self.play(&ctx);
+                            }
                         }
                     });
                 });
-                if update_ready && installed.is_some() && phase == Phase::Idle {
-                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                        if ui
-                            .add(
-                                egui::Label::new(
-                                    RichText::new("ohne Update spielen").size(11.0).underline().color(DIM),
-                                )
-                                .sense(Sense::click()),
-                            )
-                            .clicked()
-                        {
-                            self.play(&ctx);
-                        }
-                    });
+                if update_ready
+                    && installed.is_some()
+                    && phase == Phase::Idle
+                    && ui.link(RichText::new("Ohne Update spielen").size(12.0).color(DIM)).clicked()
+                {
+                    self.play(&ctx);
                 }
             });
-
-        egui::Panel::right("news")
-            .exact_size(330.0)
-            .resizable(false)
-            .frame(egui::Frame::new().fill(BG).inner_margin(Margin::same(24)).stroke(Stroke::new(1.0, LINE)))
-            .show(ui, |ui| self.news(ui, release.as_ref(), offline.as_deref()));
-
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG)).show(ui, |ui| {
-            if self.show_docs {
-                self.docs_ui(ui);
-            } else {
-                let rect = ui.max_rect();
-                self.hero(ui, rect);
-            }
-        });
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG).inner_margin(Margin::same(24))).show(
+            ui,
+            |ui| {
+                let (title, subtitle) = match self.page {
+                    Page::Play => ("Jeder Winkel zählt", "Die nächste Runde beginnt im Labyrinth"),
+                    Page::Weapons => ("Waffenlager", "Was du aufsammelst und wie du es einsetzt"),
+                    Page::News => ("Neuigkeiten", "Änderungen an Panzer"),
+                };
+                ui.label(RichText::new(title).size(30.0).color(TEXT).family(FontFamily::Name("title".into())));
+                ui.label(RichText::new(subtitle).size(13.0).color(DIM));
+                ui.add_space(20.0);
+                match self.page {
+                    Page::Play => {
+                        let rect = ui.available_rect_before_wrap();
+                        self.hero(ui, rect);
+                    }
+                    Page::Weapons => self.docs_ui(ui),
+                    Page::News => self.news(ui, release.as_ref(), offline.as_deref()),
+                }
+            },
+        );
     }
 }
 
