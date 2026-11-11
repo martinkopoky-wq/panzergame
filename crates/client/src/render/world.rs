@@ -55,13 +55,24 @@ fn rocket(g: &Gfx, x: f32, y: f32, a: f32, c: [u8; 3], k: f32, flame: f32) {
 }
 
 impl Renderer {
-    fn trail(&self, g: &mut Gfx, sid: u32, c: [u8; 3], r: f32, level: f32) {
+    pub(super) fn trail(&self, g: &mut Gfx, sid: u32, c: [u8; 3], r: f32, level: f32) {
         let Some(h) = self.hist.get(&sid) else { return };
         if h.len() < 2 {
             return;
         }
-        let pts = &h[h.len().saturating_sub(10)..];
+        let pts = &h[h.len().saturating_sub(32)..];
         let m = pts.len() as f32;
+        for (j, segment) in pts.windows(2).enumerate() {
+            let f = (j + 1) as f32 / m;
+            draw_line(
+                segment[0].0,
+                segment[0].1,
+                segment[1].0,
+                segment[1].1,
+                (r * 0.32 * f).max(0.7),
+                cola(c, 0.55 * f),
+            );
+        }
         for (j, &(hx, hy, _)) in pts[..pts.len() - 1].iter().enumerate() {
             let f = (j + 1) as f32 / m;
             g.light(c, hx, hy, r * (0.45 + 0.55 * f), level * f);
@@ -69,7 +80,7 @@ impl Renderer {
     }
 
     /// Leuchtende Kugel mit Schweif (die meisten neuen Geschosse)
-    fn ball(&self, g: &mut Gfx, sid: u32, x: f32, y: f32, r: f32, c: [u8; 3], trail: bool) {
+    pub(super) fn ball(&self, g: &mut Gfx, sid: u32, x: f32, y: f32, r: f32, c: [u8; 3], trail: bool) {
         let bright = mix(c, [255, 255, 255], 0.35);
         if trail {
             self.trail(g, sid, bright, r + 3.0, 5.0);
@@ -183,6 +194,7 @@ impl Renderer {
                     draw_circle(x, y, BOUNCY_R as f32 + 1.0, col(DARKC));
                     draw_circle(x, y, BOUNCY_R as f32, col([240, 80, 170]));
                     draw_circle(x - 2.0, y - 2.0, 2.0, col([255, 210, 235]));
+                    arc(x, y, BOUNCY_R as f32 + 3.0, t * 7.0, t * 7.0 + PI, 1.3, col([255, 169, 221]));
                 }
                 Kind::Swap => {
                     self.trail(g, sid, [170, 90, 255], 9.0, 5.0);
@@ -248,6 +260,11 @@ impl Renderer {
                 Kind::Split => {
                     g.light([255, 150, 60], x, y, 18.0, 4.0);
                     self.ball(g, sid, x, y, 4.0, [255, 140, 50], true);
+                    let a = self.heading(sid).unwrap_or(0.0);
+                    for side in [-1.0, 1.0] {
+                        let b = a + side * 0.65;
+                        draw_line(x, y, x - b.cos() * 9.0, y - b.sin() * 9.0, 2.0, col([255, 196, 113]));
+                    }
                 }
                 Kind::Wave => {
                     self.trail(g, sid, [90, 240, 190], 9.0, 8.0);
@@ -275,44 +292,37 @@ impl Renderer {
                     draw_circle(x, y, 5.0, col(DARKC));
                     draw_circle(x, y, 4.0, col([170, 176, 190]));
                     draw_circle(x, y, 1.5, col(c));
+                    let a = self.heading(sid).unwrap_or(ang);
+                    for side in [-1.0, 1.0] {
+                        let b = a + side * 0.7;
+                        let (tx, ty) = (x + b.cos() * 8.0, y + b.sin() * 8.0);
+                        draw_line(x, y, tx, ty, 2.5, col([205, 215, 228]));
+                        draw_line(tx, ty, tx - a.cos() * 4.0, ty - a.sin() * 4.0, 2.0, col([205, 215, 228]));
+                    }
                 }
                 Kind::Destruct => self.draw_destruct(g, x, y, age, life),
-                Kind::Double => self.ball(g, sid, x, y, DOUBLE_R as f32, [255, 120, 60], true),
-                Kind::Corner => self.ball(g, sid, x, y, CORNER_R as f32, [120, 220, 255], true),
-                Kind::Chain => {
-                    self.ball(g, sid, x, y, 4.0, [200, 200, 220], true);
-                }
-                Kind::Hammer => g.lit_ring(col([255, 200, 80]), x, y, HAMMER_RANGE as f32, 1.5),
-                Kind::Decoy => self.ball(g, sid, x, y, 6.0, [255, 230, 80], true),
-                Kind::Shadow => self.ball(g, sid, x, y, 9.0, [30, 30, 40], false),
-                Kind::Twist => g.lit_ring(col([255, 120, 255]), x, y, TWIST_RANGE as f32, 1.0),
-                Kind::Switch => g.lit_ring(col([120, 200, 255]), x, y, SWITCH_R as f32, 1.0),
-                Kind::Afterburn => {
-                    let a = p.ang as f32;
-                    let (x2, y2) = (x + a.cos() * AFTERBURN_LEN as f32, y + a.sin() * AFTERBURN_LEN as f32);
-                    draw_line(x, y, x2, y2, 3.0, col([255, 120, 40]));
-                }
-                Kind::Thorn => g.lit_ring(col([200, 200, 210]), x, y, 8.0, 2.0),
-                Kind::Plate => g.lit_ring(col([255, 200, 80]), x, y, PLATE_R as f32, 1.0),
-                Kind::Pincer => self.ball(g, sid, x, y, 6.0, [255, 140, 60], true),
-                Kind::Cross => g.lit_ring(col([255, 70, 70]), x, y, CROSS_R as f32, 1.5),
-                Kind::Verdict => {
-                    g.lit_ring(col([255, 80, 80]), x, y, 12.0, 1.2);
-                }
-                Kind::Catcher => g.lit_ring(col([200, 170, 255]), x, y, CATCHER_R as f32, 1.5),
-                Kind::Rust => g.lit_ring(col([170, 110, 60]), x, y, RUST_R as f32, 1.5),
-                Kind::Cushion => g.lit_ring(col([90, 200, 170]), x, y, CUSHION_R as f32, 1.5),
-                Kind::Cracker => self.ball(g, sid, x, y, 4.0, [255, 200, 60], true),
-                Kind::Pendel => {
-                    let a = p.ang as f32;
-                    draw_line(x, y, x + a.cos() * PENDEL_LEN as f32, y + a.sin() * PENDEL_LEN as f32, 3.0, col([200, 200, 220]));
-                }
-                Kind::Ring => {
-                    g.lit_ring(col([255, 170, 60]), x, y, RING_OUT as f32, 1.0);
-                    g.lit_ring(col([255, 170, 60]), x, y, RING_IN as f32, 1.0);
-                }
-                Kind::Dist => self.ball(g, sid, x, y, DIST_R as f32, c, true),
-                Kind::Eater => self.ball(g, sid, x, y, EATER_R as f32, [150, 60, 200], true),
+                Kind::Double
+                | Kind::Corner
+                | Kind::Chain
+                | Kind::Hammer
+                | Kind::Decoy
+                | Kind::Shadow
+                | Kind::Twist
+                | Kind::Switch
+                | Kind::Afterburn
+                | Kind::Thorn
+                | Kind::Plate
+                | Kind::Pincer
+                | Kind::Cross
+                | Kind::Verdict
+                | Kind::Catcher
+                | Kind::Rust
+                | Kind::Cushion
+                | Kind::Cracker
+                | Kind::Pendel
+                | Kind::Ring
+                | Kind::Dist
+                | Kind::Eater => self.draw_weapon_shot(g, p, view, now),
                 Kind::Nv | Kind::Sb | Kind::Spk | Kind::Spb => {
                     let cc = if p.kind == Kind::Spk { FW_COLORS[sid as usize % FW_COLORS.len()] } else { c };
                     self.ball(g, sid, x, y, if p.kind == Kind::Spk { 2.0 } else { 3.0 }, cc, true);
@@ -412,7 +422,7 @@ impl Renderer {
     }
 
     /// Flugrichtung aus der Geschichte (Feuerwerk hat keinen Winkel im Snapshot)
-    fn heading(&self, sid: u32) -> Option<f32> {
+    pub(super) fn heading(&self, sid: u32) -> Option<f32> {
         let h = self.hist.get(&sid)?;
         if h.len() < 2 {
             return None;
@@ -449,7 +459,7 @@ impl Renderer {
         g.shadow(x + 2.0, y + 3.0, 10.0, 1.0);
         let icon = &g.spr.icons[&Item::Timebomb];
         g.sprite(icon, x, y, 0.0, 1.0, WHITE);
-        draw_circle_lines(x, y, TIMEBOMB_BLAST as f32, 1.0, cola([255, 90, 70], if blink { 0.6 } else { 0.25 }));
+        super::weapons::field(x, y, TIMEBOMB_BLAST as f32, [255, 116, 84], age, life);
         if blink {
             g.light([255, 60, 40], x, y, 26.0, 6.0);
         }
@@ -571,6 +581,7 @@ impl Renderer {
         let k = (age / life).min(1.0);
         let blink = (age * (4.0 + 14.0 * k)) as i32 % 2 == 1;
         let c = col(if blink { [255, 60, 50] } else { [255, 160, 140] });
+        super::weapons::field(x, y, blast, [255, 116, 84], age, life);
         g.light([255, 30, 20], x, y, blast, if blink { 3.0 } else { 1.0 });
         draw_circle_lines(x, y, blast - 1.0, 2.0, c);
         draw_circle_lines(x, y, (blast * (1.0 - k)).round().max(3.0), 1.0, c);
@@ -670,6 +681,7 @@ impl Renderer {
         let k = (age / delay).min(1.0);
         let blink = (age * (4.0 + 14.0 * k)) as i32 % 2 == 1;
         let c = col(if blink { [255, 50, 50] } else { [255, 150, 150] });
+        super::weapons::field(x, y, blast, [255, 116, 84], age, delay);
         g.light([255, 30, 20], x, y, blast, if blink { 5.0 } else { 2.0 });
         draw_circle_lines(x, y, blast - 1.0, 2.0, c);
         draw_circle_lines(x, y, (blast * (1.0 - k)).round().max(4.0) - 1.0, 2.0, c);
@@ -1079,6 +1091,40 @@ impl Renderer {
             }
             Item::Timebomb => draw_circle_lines(x, y, TIMEBOMB_BLAST as f32, 1.0, red),
             Item::Destruct => draw_circle_lines(x, y, DESTRUCT_BLAST as f32, 1.0, red),
+            Item::Hammer | Item::Chain | Item::Shear | Item::Disarm | Item::Parry => {
+                let (r, half) = match w {
+                    Item::Hammer => (HAMMER_RANGE, HAMMER_HALF),
+                    Item::Chain => (CHAIN_RANGE, CHAIN_HALF),
+                    Item::Shear => (SHEAR_RANGE, SHEAR_ARC),
+                    Item::Disarm => (DISARM_RANGE, DISARM_HALF),
+                    _ => (PARRY_REACH, PARRY_HALF),
+                };
+                super::weapons::sector(x, y, a, r as f32, half as f32, [164, 205, 238]);
+            }
+            Item::Ring | Item::Decoy | Item::Switch | Item::Rust | Item::Cushion | Item::Pendel | Item::Pincer => {
+                let (dist, radius) = match w {
+                    Item::Ring => (RING_THROW, RING_OUT),
+                    Item::Decoy => (DECOY_THROW, DECOY_SENSE),
+                    Item::Switch => (SWITCH_DIST, SWITCH_R),
+                    Item::Rust => (RUST_THROW, RUST_R),
+                    Item::Cushion => (CUSHION_THROW, CUSHION_R),
+                    Item::Pendel => (40.0, PENDEL_LEN + PENDEL_R),
+                    _ => (PINCER_DIST, PINCER_LAT),
+                };
+                let (tx, ty) = ahead(arena, xd, yd, ad, dist, 12.0);
+                dotted(&[(x, y), (tx as f32, ty as f32)], cola([164, 205, 238], 0.7));
+                draw_circle_lines(tx as f32, ty as f32, radius as f32, 1.0, cola([164, 205, 238], 0.7));
+                if w == Item::Ring {
+                    draw_circle_lines(tx as f32, ty as f32, RING_IN as f32, 1.0, col([184, 228, 198]));
+                }
+            }
+            Item::Afterburn => {
+                dotted(&[(x, y), (x + a.cos() * AFTERBURN_LEN as f32, y + a.sin() * AFTERBURN_LEN as f32)], red);
+            }
+            Item::Pause | Item::Twist => {
+                let r = if w == Item::Pause { PAUSE_RANGE } else { TWIST_RANGE } as f32;
+                draw_circle_lines(x, y, r, 1.0, col([184, 178, 241]));
+            }
             _ => {}
         }
     }

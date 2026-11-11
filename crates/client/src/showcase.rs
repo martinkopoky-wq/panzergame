@@ -115,7 +115,11 @@ fn plan(item: Item) -> Plan {
             p
         }
         Item::Shotgun => direct(0.5, 160.0),
-        Item::Bouncy => direct(0.5, 240.0),
+        Item::Bouncy | Item::Split => {
+            let mut p = direct(0.5, 240.0);
+            p.me.a = BW; // erst in die nahe Wand schießen, damit die besondere Reaktion sichtbar wird
+            p
+        }
         Item::Mine => laid(0.5, 1.0, 2.5),
         Item::Swap => {
             let mut p = direct(0.5, 240.0);
@@ -164,10 +168,10 @@ fn plan(item: Item) -> Plan {
         Item::Spider => laid(0.5, 1.0, 2.5),
         Item::Ram => Plan {
             me: pos(60.0, FW),
-            foe: pos(330.0, FW),
+            foe: pos(270.0, FW),
             foe_weapon: None,
             me_safe: true,
-            events: vec![box_me, (0.5, Keys(0, UP)), (2.0, Keys(0, 0))],
+            events: vec![box_me, (0.5, Fire(0)), (0.5, Keys(0, UP)), (2.7, Keys(0, 0))],
         },
         Item::Nova => direct(0.5, 110.0),
         Item::Seek => direct(0.5, 200.0),
@@ -179,7 +183,6 @@ fn plan(item: Item) -> Plan {
         Item::Frost => direct(0.5, 100.0),
         Item::Orbit => direct(0.5, 240.0),
         Item::Prism => direct(0.5, 200.0),
-        Item::Split => direct(0.5, 200.0),
         Item::Wave => direct(0.5, 200.0),
         Item::Timebomb => laid(0.5, 1.0, 2.5),
         Item::Napalm => direct(0.5, 200.0),
@@ -298,10 +301,10 @@ fn plan(item: Item) -> Plan {
         },
         Item::Decoy => Plan {
             me: pos(60.0, FW),
-            foe: pos(300.0, BW),
+            foe: pos(260.0, BW),
             foe_weapon: None,
             me_safe: true,
-            events: vec![box_me, (0.5, Fire(0)), fire_foe(1.0)],
+            events: vec![box_me, (0.5, Fire(0)), fire_foe(1.5)],
         },
         Item::Shadow => Plan {
             me: pos(60.0, FW),
@@ -370,10 +373,10 @@ fn plan(item: Item) -> Plan {
         },
         Item::Parry => Plan {
             me: pos(60.0, FW),
-            foe: pos(90.0, BW),
+            foe: pos(112.0, BW),
             foe_weapon: None,
             me_safe: false,
-            events: vec![box_me, fire_foe(0.1), (0.12, Fire(0))],
+            events: vec![box_me, fire_foe(0.5), (0.53, Fire(0))],
         },
         Item::Rust => Plan {
             me: pos(60.0, FW),
@@ -389,7 +392,13 @@ fn plan(item: Item) -> Plan {
             me_safe: true,
             events: vec![box_me, (0.5, Fire(0)), (1.5, Keys(1, UP)), (2.5, Keys(1, 0))],
         },
-        Item::Cracker => laid(0.5, 1.0, 2.5),
+        Item::Cracker => Plan {
+            me: pos(300.0, FW),
+            foe: pos(250.0, FW),
+            foe_weapon: None,
+            me_safe: true,
+            events: vec![box_me, (0.5, Fire(0)), (0.8, Keys(1, UP)), (0.95, Keys(1, 0))],
+        },
         _ => panic!("kein Drehbuch für {item:?}"),
     }
 }
@@ -405,7 +414,7 @@ fn find_line(game: &Game) -> Option<(f64, f64)> {
 }
 
 /// Spiel mit der Aufstellung aus dem Drehbuch. Liefert Spiel und Startpunkt der Linie.
-fn setup(p: &Plan) -> (Game, f64, f64) {
+fn setup(p: &Plan, item: Item) -> (Game, f64, f64) {
     let mut seed = 1u64;
     loop {
         let mut game = Game::with_rng(&[0, 1], Rng::new(seed));
@@ -414,8 +423,13 @@ fn setup(p: &Plan) -> (Game, f64, f64) {
         }
         game.box_timer = 1e9;
         game.mutator = None; // keine Sonderregel (Stromausfall würde die Szene verdunkeln)
+        game.maze.mutator = None; // auch nach Wandbau/Plasma bleibt die neu gebaute Arena ohne Sonderregel
         game.arena.mutator = None;
-        if let Some((sx, sy)) = find_line(&game) {
+        if let Some((mut sx, sy)) = find_line(&game) {
+            if matches!(item, Item::Bouncy | Item::Split) {
+                let d = panzer_core::physics::first_wall(&game.arena, sx + p.me.dx, sy, BW, game.arena.ww);
+                sx -= (d - 55.0).max(0.0);
+            }
             let me = &mut game.tanks[0];
             me.x = sx + p.me.dx;
             me.y = sy + p.me.dy;
@@ -467,10 +481,18 @@ impl Input {
     }
 }
 
+/// Die Aufnahme ist eine einzelne Szene: ein Abschuss darf keine neue Runde starten.
+fn advance(game: &mut Game, input: &Input) {
+    game.end_timer = Some(1e6);
+    game.slow = 0.0;
+    input.tick(game);
+    game.step(TICK);
+}
+
 /// Nimmt die Szene auf. Jedes Bild wird als PNG in `out` gespeichert.
 pub async fn run(app: &mut App, item: Item, out: &str) {
     let p = plan(item);
-    let (mut game, sx, sy) = setup(&p);
+    let (mut game, sx, sy) = setup(&p, item);
     let mut input = Input::new(&game);
 
     // Ausschnitt: VIEW_W breit, auf die Mitte der Szene zentriert, Seitenverhältnis wie das Labyrinth
@@ -487,29 +509,95 @@ pub async fn run(app: &mut App, item: Item, out: &str) {
     let mut events = p.events.clone();
     events.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut next = 0;
+    // Für Sichtprüfungen nur jedes n-te PNG schreiben; Simulation und Animation bleiben bei 60 Hz.
+    let stride =
+        std::env::var("PANZER_SHOWCASE_STRIDE").ok().and_then(|s| s.parse::<usize>().ok()).unwrap_or(1).clamp(1, 60);
     for f in 0..warm + frames {
         let now = (f as f64 - warm as f64) * TICK;
         while next < events.len() && now + 1e-9 >= events[next].0 {
             input.apply(&mut game, events[next].1);
             next += 1;
         }
-        input.tick(&mut game);
-        // Die Szene soll nicht enden, wenn der Gegner fällt: kein Rundenende, keine Zeitlupe, kein Banner
-        game.end_timer = None;
-        game.slow = 0.0;
-        game.step(TICK);
+        advance(&mut game, &input);
         app.begin();
         let view = game.net_snap(None, false).view();
         let roster = Roster::local();
         let frame = Frame { arena: &game.arena, view: &view, me: None, roster: &roster, quiet: true, hud: true };
+        app.r.scene_time = Some(f as f64 * TICK);
         app.r.draw(&mut app.g, &frame);
-        if f >= warm {
+        if f >= warm && (f - warm) % stride == 0 {
             let mut img = get_screen_data();
             for px in img.bytes.chunks_mut(4) {
                 px[3] = 255;
             }
-            img.export_png(&format!("{out}/{:04}.png", f - warm));
+            img.export_png(&format!("{out}/{:04}.png", (f - warm) / stride));
         }
         next_frame().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use panzer_core::items::{Kind, ALL_ITEMS};
+
+    fn simulate(item: Item, mut observe: impl FnMut(&Game)) -> Game {
+        let mut p = plan(item);
+        let (mut game, _, _) = setup(&p, item);
+        let mut input = Input::new(&game);
+        p.events.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut next = 0;
+        for f in 0..((WARMUP + DURATION) / TICK).round() as usize {
+            let now = f as f64 * TICK - WARMUP;
+            while next < p.events.len() && now + 1e-9 >= p.events[next].0 {
+                input.apply(&mut game, p.events[next].1);
+                next += 1;
+            }
+            advance(&mut game, &input);
+            observe(&game);
+        }
+        game
+    }
+
+    #[test]
+    fn all_weapon_scenes_stay_in_one_round_without_random_rules() {
+        for &item in ALL_ITEMS.iter().filter(|w| w.is_weapon()) {
+            let mut id = None;
+            simulate(item, |game| {
+                assert_eq!(*id.get_or_insert(game.maze_id), game.maze_id, "{item:?}: round restarted");
+                assert!(game.arena.mutator.is_none(), "{item:?}: unrelated special rule");
+                assert!(game.win.is_none(), "{item:?}: winner banner covers the demo");
+                assert_eq!(game.ts, 1.0, "{item:?}: unexpected slow motion");
+            });
+        }
+    }
+
+    #[test]
+    fn bounce_scenes_show_the_mechanic_before_the_target() {
+        let mut bounced = false;
+        simulate(Item::Bouncy, |game| {
+            bounced |= game.shots.iter().any(|s| s.kind == Kind::Bnc && s.bounces > 0);
+        });
+        assert!(bounced, "Flummi demo must show a wall bounce");
+        let mut split = false;
+        simulate(Item::Split, |game| {
+            split |= game.shots.iter().filter(|s| s.kind == Kind::Split).count() > 1;
+        });
+        assert!(split, "Querschläger demo must show splitting at a wall");
+    }
+
+    #[test]
+    fn close_range_demos_actually_connect() {
+        let mut failures = Vec::new();
+        for item in [Item::Ram, Item::Parry, Item::Decoy, Item::Cracker] {
+            let game = simulate(item, |_| {});
+            if !game.tanks[0].alive || game.tanks[1].alive {
+                failures.push(format!(
+                    "{item:?}: attacker alive={}, victim alive={} (x={:.1})",
+                    game.tanks[0].alive, game.tanks[1].alive, game.tanks[1].x
+                ));
+            }
+        }
+        assert!(failures.is_empty(), "Demos did not connect: {}", failures.join("; "));
     }
 }

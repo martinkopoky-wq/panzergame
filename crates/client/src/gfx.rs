@@ -13,6 +13,10 @@ pub const VW: f32 = W as f32;
 pub const VH: f32 = H as f32;
 pub const VIEW: f32 = VIEW_H as f32;
 
+// Animationen skalieren Glyphen, statt für jeden Zwischenwert einen neuen Atlas-Eintrag anzulegen.
+const TEXT_RASTER_SIZE: u16 = 48;
+const TITLE_RASTER_SIZE: u16 = 72;
+
 const VERTEX: &str = r#"#version 100
 attribute vec3 position;
 attribute vec2 texcoord;
@@ -153,6 +157,10 @@ impl Gfx {
         let mut title = load_ttf_font_from_bytes(include_bytes!("../../../assets/fonts/RobotoCondensed-Bold.ttf"))
             .expect("Schrift");
         title.set_filter(FilterMode::Linear);
+        let characters: Vec<char> = (' '..='~').chain("ÄÖÜäöüß×°·–—…•".chars()).collect();
+        let dpi = miniquad::window::dpi_scale();
+        font.populate_font_cache(&characters, (TEXT_RASTER_SIZE as f32 * dpi).ceil() as u16);
+        title.populate_font_cache(&characters, (TITLE_RASTER_SIZE as f32 * dpi).ceil() as u16);
         Gfx {
             add: material(Some(additive), Some(keep_alpha)),
             mul: material(Some(multiply), Some(keep_alpha)),
@@ -284,7 +292,8 @@ impl Gfx {
     }
 
     pub fn measure(&self, text: &str, size: f32, title: bool) -> TextDimensions {
-        measure_text(text, Some(self.font(title)), size.round().max(4.0) as u16, 1.0)
+        let raster = if title { TITLE_RASTER_SIZE } else { TEXT_RASTER_SIZE };
+        measure_text(text, Some(self.font(title)), raster, size.max(4.0) / raster as f32)
     }
 
     /// Einfacher Text, (x, y) = Anker, align: 0 = links, 0.5 = Mitte, 1 = rechts; y = Mitte
@@ -297,7 +306,8 @@ impl Gfx {
             base,
             TextParams {
                 font: Some(&self.font),
-                font_size: size.round().max(4.0) as u16,
+                font_size: TEXT_RASTER_SIZE,
+                font_scale: size.max(4.0) / TEXT_RASTER_SIZE as f32,
                 color: c,
                 ..Default::default()
             },
@@ -324,13 +334,19 @@ impl Gfx {
         }
         let size = (size * scale).max(4.0);
         let font = self.font(title);
-        let fs = size.round() as u16;
-        let d = measure_text(text, Some(font), fs, 1.0);
+        let fs = if title { TITLE_RASTER_SIZE } else { TEXT_RASTER_SIZE };
+        let d = self.measure(text, size, title);
         let x = cx - d.width / 2.0;
         let base = cy - d.height / 2.0 + d.offset_y;
         let ow = (ow * scale).max(1.0);
         let sh = 2.0 + size / 22.0;
-        let params = |color: Color| TextParams { font: Some(font), font_size: fs, color, ..Default::default() };
+        let params = |color: Color| TextParams {
+            font: Some(font),
+            font_size: fs,
+            font_scale: size / fs as f32,
+            color,
+            ..Default::default()
+        };
         draw_text_ex(text, x + sh, base + sh, params(Color::new(0.0, 0.0, 0.0, 0.47 * alpha)));
         let edge = Color::new(12.0 / 255.0, 12.0 / 255.0, 18.0 / 255.0, alpha);
         let n = if ow > 2.0 { 12 } else { 8 };

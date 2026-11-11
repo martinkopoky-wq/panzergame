@@ -98,7 +98,16 @@ impl Game {
             let ang = match s.kind {
                 k if k.angled() => s.heading(),
                 Kind::Spider => s.heading(),
-                Kind::Sentry | Kind::Orbit | Kind::Fence | Kind::Sprinkler => s.ang,
+                Kind::Sentry
+                | Kind::Orbit
+                | Kind::Fence
+                | Kind::Sprinkler
+                | Kind::Hammer
+                | Kind::Shadow
+                | Kind::Afterburn
+                | Kind::Thorn
+                | Kind::Pendel => s.ang,
+                Kind::Pincer => s.heading(),
                 _ => 0.0,
             };
             shots.push(NetShot {
@@ -170,6 +179,40 @@ impl Game {
                     born: ms(self.time - f.age),
                 })
                 .collect(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::codec::{read_snap, write_snap, Reader, Writer};
+    use crate::game::Shot;
+    use crate::rng::Rng;
+
+    #[test]
+    fn directional_weapon_visuals_survive_full_and_delta_snapshots() {
+        let kinds = [Kind::Hammer, Kind::Shadow, Kind::Afterburn, Kind::Thorn, Kind::Pendel, Kind::Pincer];
+        let mut game = Game::with_rng(&[0, 1], Rng::new(1));
+        let mut previous = None;
+        for angle in [0.0, TAU / 4.0, TAU / 2.0, TAU - 0.1] {
+            game.shots.clear();
+            for (id, kind) in kinds.into_iter().enumerate() {
+                let mut shot = Shot::new(id as u32 + 1, kind, 0, 200.0, 200.0, angle, 1.0, 4.0, 2.0, 0.0);
+                shot.ang = angle;
+                game.shots.push(shot);
+            }
+            let snapshot = game.net_snap(None, false);
+            for base in [None, previous.as_ref()] {
+                let mut writer = Writer::new();
+                write_snap(&mut writer, &snapshot, base);
+                let decoded = read_snap(&mut Reader::new(&writer.buf), base).expect("snapshot");
+                for shot in decoded.view().shots {
+                    let error = crate::geom::angle_diff(shot.ang, angle).abs();
+                    assert!(error < TAU / 65536.0, "{:?}: expected {angle}, got {}", shot.kind, shot.ang);
+                }
+            }
+            previous = Some(snapshot);
         }
     }
 }

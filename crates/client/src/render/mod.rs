@@ -4,6 +4,7 @@
 mod events;
 mod hud;
 mod maze;
+mod weapons;
 mod world;
 
 use std::collections::{HashMap, HashSet};
@@ -13,7 +14,7 @@ use panzer_core::consts::*;
 use panzer_core::geom::Wall;
 use panzer_core::items::Item;
 use panzer_core::physics::Effects;
-use panzer_core::snap::{TankView, View};
+use panzer_core::snap::{ShotView, TankView, View};
 use panzer_core::Arena;
 
 use crate::audio::{Music, Sfx};
@@ -101,6 +102,9 @@ pub struct Renderer {
     flash: f32,
     last_frame: f64,
     hist: HashMap<u32, Vec<(f32, f32, f64)>>,
+    previous_weapon_shots: Vec<ShotView>,
+    weapon_echoes: Vec<(ShotView, f64)>,
+    weapon_help: HashMap<usize, (Item, f64)>,
     after: HashMap<usize, Vec<(f32, f32, f32, f64)>>,
     prev: HashMap<usize, TankView>,
     flying: Vec<Flying>,
@@ -118,6 +122,8 @@ pub struct Renderer {
     focus: Option<(f32, f32)>,
     /// Showcase: fester Ausschnitt der Welt (x, y, Breite, Höhe), sonst das ganze Labyrinth
     pub crop: Option<Rect>,
+    /// Feste Aufnahmezeit für reproduzierbare Showcase-Animationen; im Spiel echte Zeit.
+    pub scene_time: Option<f64>,
     cine: f32,
     my_eff: Effects,
     me: Option<usize>,
@@ -148,6 +154,9 @@ impl Renderer {
             flash: 0.0,
             last_frame: get_time(),
             hist: HashMap::new(),
+            previous_weapon_shots: Vec::new(),
+            weapon_echoes: Vec::new(),
+            weapon_help: HashMap::new(),
             after: HashMap::new(),
             prev: HashMap::new(),
             flying: Vec::new(),
@@ -164,6 +173,7 @@ impl Renderer {
             slow_seen: false,
             focus: None,
             crop: None,
+            scene_time: None,
             cine: 0.0,
             my_eff: Effects::default(),
             me: None,
@@ -182,6 +192,7 @@ impl Renderer {
     pub fn reset(&mut self) {
         self.maze = None;
         self.round_id = None;
+        self.scene_time = None;
         self.scores_seen = [None; MAX_PLAYERS];
         self.score_pop = [None; MAX_PLAYERS];
         self.trauma = 0.0;
@@ -214,6 +225,9 @@ impl Renderer {
         self.seen_fx.clear();
         self.tracks.clear();
         self.hist.clear();
+        self.previous_weapon_shots.clear();
+        self.weapon_echoes.clear();
+        self.weapon_help.clear();
         self.after.clear();
         self.prev.clear();
         self.box_seen.clear();
@@ -271,7 +285,7 @@ impl Renderer {
 
     /// Ein Bild der Spielwelt plus HUD. Muss mit der Bildschirmkamera aufgerufen werden.
     pub fn draw(&mut self, g: &mut Gfx, f: &Frame) {
-        let now = get_time();
+        let now = self.scene_time.unwrap_or_else(get_time);
         let dt = ((now - self.last_frame) as f32).clamp(0.0, 0.05);
         self.last_frame = now;
         let (arena, view) = (f.arena, f.view);
@@ -299,6 +313,7 @@ impl Renderer {
                 self.trauma = 0.0;
             }
             self.track_shots(view, now);
+            self.track_weapon_releases(view, now);
             self.emit(view, arena, vdt, now);
         }
         let landed = self.parts.update(vdt, Some(arena));
@@ -361,6 +376,7 @@ impl Renderer {
                 self.draw_tank(g, tk, now);
             }
             self.draw_fx(g, view, now);
+            self.draw_weapon_releases(g, now);
             self.draw_flying(g);
             for (jx, jy, ang) in std::mem::take(&mut self.jets) {
                 let jet = &g.spr.jet;

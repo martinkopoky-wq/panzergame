@@ -292,6 +292,30 @@ impl Renderer {
         for (k, tank) in view.tanks.iter().enumerate() {
             let rect = Rect::new((10.0 + k as f32 * (cw + gap)).round(), ctop, cw.round(), ch);
             self.card(g, rect, tank, view, me, lead, roster, bp.most, bp.life as f32, now);
+            if let Some(w) = tank.weapon {
+                self.weapon_help.insert(tank.slot, (w, now));
+            }
+        }
+        // Die Hilfe bleibt auch nach dem letzten Schuss sichtbar, solange die Waffe wirkt.
+        if let Some(tk) = me.or(if self.quiet { Some(0) } else { None }).and_then(|slot| view.tank(slot)) {
+            if tk.alive {
+                let active = tk
+                    .weapon
+                    .or(if tk.eff.has(Eff::Ram) { Some(panzer_core::items::Item::Ram) } else { None })
+                    .or_else(|| view.shots.iter().filter(|p| p.owner == tk.slot).find_map(|p| p.kind.icon()));
+                let weapon =
+                    active.or_else(|| self.weapon_help.get(&tk.slot).filter(|(_, at)| now - at < 4.0).map(|(w, _)| *w));
+                if let Some(w) = weapon.filter(|w| !w.hint().is_empty()) {
+                    let recent = if active.is_none() { "Zuletzt: " } else { "" };
+                    let text = format!("{recent}{}  ·  {}", w.name(), w.hint());
+                    let size = (14.0 * (VW - 60.0) / g.measure(&text, 14.0, false).width.max(1.0)).min(14.0);
+                    let width = g.measure(&text, size, false).width + 28.0;
+                    let x = (VW - width) / 2.0;
+                    draw_rectangle(x, VIEW - 29.0, width, 25.0, cola([10, 14, 20], 0.94));
+                    draw_rectangle(x, VIEW - 29.0, 3.0, 25.0, col(box_color(w)));
+                    g.text(&text, VW / 2.0, VIEW - 16.0, size, col([237, 241, 247]), 0.5);
+                }
+            }
         }
     }
 
@@ -403,7 +427,7 @@ impl Renderer {
                 draw_rectangle(row_x + 24.0, row_y, bw * frac, 6.0, col(fc));
             } else {
                 let mut label = if compact { String::new() } else { w.name().to_string() };
-                if w.has_ammo() {
+                if w.is_weapon() {
                     label.push_str(&format!(" {}×", tk.ammo));
                 }
                 let label = label.trim();

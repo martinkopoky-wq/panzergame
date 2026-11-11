@@ -18,11 +18,11 @@ use crate::sprites::{box_color, FW_COLORS, PRISM_COLORS};
 fn shot_sound(k: Kind) -> Option<&'static str> {
     use Kind::*;
     Some(match k {
-        B | Seek | Gold | Split | Wave => "shot",
+        B | Seek | Gold | Split | Wave | Double | Corner | Dist => "shot",
         Mg | Sb | Spb => "mg",
         Sg | Nv => "sg",
         Rocket | Rc | Mrk | Fw => "rocket",
-        Frag | Nuke | Gl | Napalm => "frag",
+        Frag | Nuke | Gl | Napalm | Ring => "frag",
         Bnc | Sticky => "bnc",
         Rang | Hook => "rang",
         Swap | Phase => "tele",
@@ -31,7 +31,15 @@ fn shot_sound(k: Kind) -> Option<&'static str> {
         Mine | Spider | Trap | Destruct => "mine",
         Strike | Arty => "strike",
         Fl | Burn => "flame",
-        Sentry | Oil | Timebomb | Fence | Sprinkler => "drop",
+        Sentry | Oil | Timebomb | Fence | Sprinkler | Decoy | Switch | Catcher | Cushion | Cracker | Rust | Shadow => {
+            "drop"
+        }
+        Chain | Thorn | Plate => "clank",
+        Hammer | Pendel => "rang",
+        Twist => "tele",
+        Afterburn => "tick",
+        Cross | Verdict => "blip",
+        Eater => "hole",
         Saw => "saw",
         Plasma => "plasma",
         Cannon => "cannon",
@@ -568,7 +576,8 @@ impl Renderer {
                 }
             }
             h.push((x, y, now));
-            while h.len() > 3 && now - h[0].2 > 0.13 {
+            let trail_time = if p.kind == Kind::Wave { 0.35 } else { 0.13 };
+            while h.len() > 3 && now - h[0].2 > trail_time {
                 h.remove(0);
             }
         }
