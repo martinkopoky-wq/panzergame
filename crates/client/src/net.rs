@@ -355,13 +355,14 @@ impl NetClient {
         let latest = self.views.back()?;
         let arena = self.arena.as_ref()?;
         let render_t = self.now() + self.offset.unwrap_or(0.0) - INTERP_DELAY;
-        let mut view = latest.clone();
-        for w in self.views.iter().collect::<Vec<_>>().windows(2) {
-            if w[0].time <= render_t && render_t <= w[1].time {
-                view = View::interpolate(w[0], w[1], render_t);
-                break;
-            }
-        }
+        // Fenster zuerst suchen (iteriert, ohne Zwischensammlung) und genau ein View bauen:
+        // vorher wurde erst das letzte komplett geklont und dann nochmal interpoliert
+        let mut view = match self.views.iter().zip(self.views.iter().skip(1)).find(|(a, b)| {
+            a.time <= render_t && render_t <= b.time
+        }) {
+            Some((a, b)) => View::interpolate(a, b, render_t),
+            None => latest.clone(),
+        };
         if latest.queued {
             return Some(view);
         }

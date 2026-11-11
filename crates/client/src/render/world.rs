@@ -1008,7 +1008,7 @@ impl Renderer {
                 poly(&pts, cola(COLORS[i], fade));
                 g.fancy("DU", x, ly, 24.0, c, 2.0, true, fade, 1.0);
             } else if !self.quiet {
-                let mut name = roster.name(i);
+                let mut name = roster.name(i).to_string();
                 if view.is_bot(i) && !name.contains("Bot") {
                     name.push_str(" (Bot)");
                 }

@@ -42,8 +42,8 @@ impl Roster {
         }
     }
 
-    pub fn name(&self, slot: usize) -> String {
-        self.names.get(slot).cloned().unwrap_or_default()
+    pub fn name(&self, slot: usize) -> &str {
+        self.names.get(slot).map(String::as_str).unwrap_or("")
     }
 }
 
@@ -93,8 +93,13 @@ pub struct Renderer {
     round_id: Option<u32>,
     round_walls: Vec<Wall>,
     round_start: f64,
+    /// gleichbleibende Beschriftungen einmal formatieren statt pro Bild neu
+    hud_round_label: (u32, String),
+    hud_mut_label: (Option<Mutator>, String),
     seen_shots: HashSet<u32>,
     seen_fx: HashSet<u32>,
+    /// ids der lebenden Geschosse (track_shots, sortiert, pro Bild wiederverwendet)
+    shot_ids: Vec<u32>,
     tracks: HashMap<usize, (f32, f32, f32)>,
     taunts: HashMap<usize, u8>,
     last_win: bool,
@@ -147,8 +152,11 @@ impl Renderer {
             round_id: None,
             round_walls: Vec::new(),
             round_start: 0.0,
+            hud_round_label: (u32::MAX, String::new()),
+            hud_mut_label: (None, String::new()),
             seen_shots: HashSet::new(),
             seen_fx: HashSet::new(),
+            shot_ids: Vec::new(),
             tracks: HashMap::new(),
             taunts: HashMap::new(),
             last_win: false,
@@ -454,7 +462,10 @@ impl Renderer {
         }
         self.draw_transition(if live { Some(view) } else { None }, arena, now);
         if f.hud {
-            g.fancy(&format!("Runde {}", arena.id), 40.0, 9.0, 16.0, DIM_C, 2.0, false, 1.0, 1.0);
+            if self.hud_round_label.0 != arena.id {
+                self.hud_round_label = (arena.id, format!("Runde {}", arena.id));
+            }
+            g.fancy(&self.hud_round_label.1, 40.0, 9.0, 16.0, DIM_C, 2.0, false, 1.0, 1.0);
         }
     }
 }

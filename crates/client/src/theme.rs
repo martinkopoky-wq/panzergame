@@ -66,19 +66,23 @@ pub fn outlined(r: Rect, radius: f32, fill: [u8; 3], edge: [u8; 3]) {
 }
 
 /// Fit complete Unicode characters, including the ellipsis, to the available width.
-pub fn fit(g: &Gfx, text: &str, size: f32, width: f32) -> String {
+/// Leiht sich den Text, wenn er passt; nur abgeschnittene Texte werden neu gebaut.
+pub fn fit<'a>(g: &Gfx, text: &'a str, size: f32, width: f32) -> std::borrow::Cow<'a, str> {
+    use std::borrow::Cow;
     if g.measure(text, size, false).width <= width {
-        return text.to_string();
+        return Cow::Borrowed(text);
     }
-    let mut s = text.to_string();
+    let mut s = String::with_capacity(text.len() + 1);
+    s.push_str(text);
     while !s.is_empty() {
         s.pop();
-        let clipped = format!("{s}…");
-        if g.measure(&clipped, size, false).width <= width {
-            return clipped;
+        s.push('…');
+        if g.measure(&s, size, false).width <= width {
+            return Cow::Owned(s);
         }
+        s.pop();
     }
-    String::new()
+    Cow::Borrowed("")
 }
 
 /// Inputs keep the caret and the end being edited in view.

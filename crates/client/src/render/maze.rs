@@ -16,6 +16,8 @@ pub struct MazeLayer {
     px: Vec<u8>,
     pub tex: Texture2D,
     dirty: Vec<(usize, usize, usize, usize)>,
+    /// wiederverwendeter Puffer der zusammengezogenen Upload-Rechtecke
+    up: Vec<(usize, usize, usize, usize)>,
 }
 
 fn put(px: &mut [u8], w: usize, x0: usize, y0: usize, cv: &Canvas, area: (usize, usize, usize, usize)) {
@@ -37,7 +39,7 @@ impl MazeLayer {
         put(&mut px, w, 0, 0, &full, (0, 0, w, h));
         let tex = Texture2D::from_rgba8(w as u16, h as u16, &px);
         tex.set_filter(FilterMode::Linear);
-        MazeLayer { rev: arena.rev, w, h, floor, px, tex, dirty: Vec::new() }
+        MazeLayer { rev: arena.rev, w, h, floor, px, tex, dirty: Vec::new(), up: Vec::new() }
     }
 
     /// Mitten in der Runde haben sich Wände geändert: nur diese Stellen neu (mit Rand)
@@ -177,19 +179,29 @@ impl MazeLayer {
         if self.dirty.is_empty() {
             return;
         }
-        // nahe Rechtecke zusammenfassen hält die Zahl der Uploads klein
+        // Nahe Rechtecke zusammenziehen: vorher ging entweder alles als ein Rechteck
+        // (der gemeinsame Rahmen konnte dann großteils unveränderte Pixel laden) oder
+        // alles einzeln. Jetzt paarweise, solange die Rahmenfläche höchstens das
+        // Doppelte der Einzelflächen ist.
         let rects = std::mem::take(&mut self.dirty);
-        let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
-        for &(x, y, w, h) in &rects {
-            x0 = x0.min(x);
-            y0 = y0.min(y);
-            x1 = x1.max(x + w);
-            y1 = y1.max(y + h);
+        let mut merged = std::mem::take(&mut self.up);
+        merged.clear();
+        for r in rects {
+            let mut done = false;
+            for m in merged.iter_mut() {
+                let (nx0, ny0) = (m.0.min(r.0), m.1.min(r.1));
+                let (nx1, ny1) = ((m.0 + m.2).max(r.0 + r.2), (m.1 + m.3).max(r.1 + r.3));
+                if (nx1 - nx0) * (ny1 - ny0) <= 2 * (m.2 * m.3 + r.2 * r.3) {
+                    *m = (nx0, ny0, nx1 - nx0, ny1 - ny0);
+                    done = true;
+                    break;
+                }
+            }
+            if !done {
+                merged.push(r);
+            }
         }
-        let area = (x1 - x0) * (y1 - y0);
-        let parts: Vec<(usize, usize, usize, usize)> =
-            if area < 250_000 || rects.len() == 1 { vec![(x0, y0, x1 - x0, y1 - y0)] } else { rects };
-        for (x, y, w, h) in parts {
+        for &(x, y, w, h) in &merged {
             if w == 0 || h == 0 {
                 continue;
             }
@@ -201,5 +213,6 @@ impl MazeLayer {
             let img = Image { width: w as u16, height: h as u16, bytes };
             self.tex.update_part(&img, x as i32, y as i32, w as i32, h as i32);
         }
+        self.up = merged;
     }
 }

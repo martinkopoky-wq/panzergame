@@ -90,10 +90,13 @@ impl Renderer {
         let (cx, cy) = (VW / 2.0, (ARENA_TOP + ARENA_H / 2.0) as f32);
         let t = (now - self.round_start) as f32;
         let th = arena.theme();
-        let name = |s: usize| roster.name(s);
+        let name = |s: usize| roster.name(s).to_string();
         if let Some(m) = arena.mutator {
+            if self.hud_mut_label.0 != arena.mutator {
+                self.hud_mut_label = (arena.mutator, format!("Sonderregel: {}", m.name()));
+            }
             g.fancy(
-                &format!("Sonderregel: {}", m.name()),
+                &self.hud_mut_label.1,
                 VW / 2.0,
                 9.0,
                 18.0,
@@ -188,7 +191,7 @@ impl Renderer {
 
     pub(super) fn draw_feed(&self, g: &mut Gfx, view: &View, roster: &Roster) {
         let mut y = 26.0;
-        let name = |s: usize| roster.name(s);
+        let name = |s: usize| roster.name(s).to_string();
         for f in &view.feed {
             let text = kill_text(f.by, f.victim, f.how, f.variant, &name);
             let slot = f.by.unwrap_or(f.victim).min(MAX_PLAYERS - 1);
@@ -209,9 +212,10 @@ impl Renderer {
             }
             // Namen in ihrer Farbe
             let mut parts: Vec<(String, [u8; 3])> = vec![(text.clone(), [215, 220, 230])];
-            let mut names: Vec<(String, [u8; 3])> = vec![(roster.name(slot), mix(COLORS[slot], [255, 255, 255], 0.3))];
+            let mut names: Vec<(String, [u8; 3])> =
+                vec![(roster.name(slot).to_string(), mix(COLORS[slot], [255, 255, 255], 0.3))];
             if f.victim != slot {
-                names.push((roster.name(f.victim), mix(COLORS[f.victim.min(7)], [255, 255, 255], 0.3)));
+                names.push((roster.name(f.victim).to_string(), mix(COLORS[f.victim.min(7)], [255, 255, 255], 0.3)));
             }
             for (n, c) in names {
                 if n.is_empty() {
@@ -372,7 +376,13 @@ impl Renderer {
         if Some(slot) == lead {
             g.sprite(&g.spr.crown, r.x + 24.0, r.y + 5.0, 0.0, 0.45, WHITE);
         }
-        let name = if Some(slot) == me { format!("Du · {}", roster.name(slot)) } else { roster.name(slot) };
+        let own_prefix;
+        let name = if Some(slot) == me {
+            own_prefix = format!("Du · {}", roster.name(slot));
+            &own_prefix
+        } else {
+            roster.name(slot)
+        };
         let name =
             theme::fit(g, &name, if featured { 13.0 } else { 11.0 }, if featured { r.w - 104.0 } else { r.w - 12.0 });
         g.text(

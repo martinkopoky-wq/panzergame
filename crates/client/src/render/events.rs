@@ -581,8 +581,11 @@ impl Renderer {
                 h.remove(0);
             }
         }
-        let live: std::collections::HashSet<u32> = view.shots.iter().map(|s| s.id).collect();
-        self.hist.retain(|k, _| live.contains(k));
+        // lebende ids in wiederverwendetem, sortiertem Puffer (statt HashSet pro Frame)
+        self.shot_ids.clear();
+        self.shot_ids.extend(view.shots.iter().map(|s| s.id));
+        self.shot_ids.sort_unstable();
+        self.hist.retain(|k, _| self.shot_ids.binary_search(k).is_err());
         for (x, y, k, o) in bounces {
             self.bounce(x, y, k, o, track);
         }
@@ -1023,7 +1026,14 @@ impl Renderer {
         Vec<(f32, f32, f32, [u8; 3], f32)>,
         Vec<([u8; 3], [(f32, f32); 4])>,
     ) {
-        let (mut low, mut polys_low, mut high, mut polys_high) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        // einmal reservieren statt Verdopplungs-Kaskade: hier laufen bis zu 2400 Partikel durch
+        let cap = self.parts.items.len();
+        let (mut low, mut polys_low, mut high, mut polys_high) = (
+            Vec::with_capacity(cap),
+            Vec::with_capacity(cap),
+            Vec::with_capacity(cap),
+            Vec::with_capacity(cap),
+        );
         for p in &self.parts.items {
             let k = p.age / p.life;
             let (x, y) = (p.x, p.y);

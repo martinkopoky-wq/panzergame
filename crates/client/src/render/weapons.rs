@@ -72,12 +72,15 @@ impl Renderer {
                 self.weapon_echoes.push((previous.clone(), now));
             }
         }
-        self.previous_weapon_shots = view
-            .shots
-            .iter()
-            .filter(|p| matches!(p.kind, Kind::Afterburn | Kind::Hammer | Kind::Twist | Kind::Ring | Kind::Cross))
-            .cloned()
-            .collect();
+        let mut keep = std::mem::take(&mut self.previous_weapon_shots);
+        keep.clear();
+        keep.extend(
+            view.shots
+                .iter()
+                .filter(|p| matches!(p.kind, Kind::Afterburn | Kind::Hammer | Kind::Twist | Kind::Ring | Kind::Cross))
+                .cloned(),
+        );
+        self.previous_weapon_shots = keep;
     }
 
     pub(super) fn draw_weapon_releases(&self, g: &mut Gfx, now: f64) {

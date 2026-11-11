@@ -43,6 +43,8 @@ pub struct App {
     pub demo: Option<Demo>,
     pub fullscreen: bool,
     pub frames: u64,
+    /// Namen für Menü-Hintergründe: immer dieselben, nicht pro Bild neu bauen
+    menu_roster: Roster,
 }
 
 /// Bots, die im Hintergrund von Menü und Wartebildschirmen gegeneinander kämpfen
@@ -121,8 +123,8 @@ impl App {
         let Some(demo) = self.demo.as_mut() else { return };
         demo.step(dt);
         let view = demo.game.net_snap(None, false).view();
-        let roster = Roster::local();
-        let frame = Frame { arena: &demo.game.arena, view: &view, me: None, roster: &roster, quiet: true, hud: false };
+        let frame =
+            Frame { arena: &demo.game.arena, view: &view, me: None, roster: &self.menu_roster, quiet: true, hud: false };
         self.r.preview_rect = target;
         self.r.draw(&mut self.g, &frame);
         self.r.preview_rect = None;
@@ -205,7 +207,7 @@ async fn main() {
     let mut r = Renderer::new().await;
     r.sfx.on = cfg.sfx;
     r.music.on = cfg.music;
-    let mut app = App { g, r, cfg, demo: None, fullscreen: false, frames: 0 };
+    let mut app = App { g, r, cfg, demo: None, fullscreen: false, frames: 0, menu_roster: Roster::local() };
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     // Aufnahme für die Doku: panzer showcase <waffe> <ordner>
