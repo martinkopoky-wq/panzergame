@@ -1982,7 +1982,7 @@ dependencies = [
 
 [[package]]
 name = "panzer"
-version = "2.3.1"
+version = "2.3.2"
 dependencies = [
  "macroquad",
  "panzer-core",
@@ -1991,11 +1991,11 @@ dependencies = [
 
 [[package]]
 name = "panzer-core"
-version = "2.3.1"
+version = "2.3.2"
 
 [[package]]
 name = "panzer-launcher"
-version = "2.3.1"
+version = "2.3.2"
 dependencies = [
  "eframe",
  "image 0.25.10",
@@ -2008,7 +2008,7 @@ dependencies = [
 
 [[package]]
 name = "panzer-server"
-version = "2.3.1"
+version = "2.3.2"
 dependencies = [
  "panzer-core",
 ]
