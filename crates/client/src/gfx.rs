@@ -78,6 +78,7 @@ struct Glow {
 enum Lit {
     Line(Color, f32, f32, f32, f32, f32),
     Ring(Color, f32, f32, f32, f32),
+    Tri(Color, Vec2, Vec2, Vec2),
 }
 
 /// Bildschirm-Layout: virtuelle 1000×680 Pixel, mit schwarzen Balken eingepasst
@@ -198,6 +199,11 @@ impl Gfx {
         }
     }
 
+    /// Leuchtendes Dreieck (geformte Blitze: Mündungsfeuer, Schnitte)
+    pub fn lit_tri(&mut self, c: Color, a: Vec2, b: Vec2, d: Vec2) {
+        self.lits.push(Lit::Tri(c, a, b, d));
+    }
+
     pub fn lit_polyline(&mut self, c: [u8; 3], k: f32, pts: &[(f32, f32)], w: f32) {
         let color = colk(c, k);
         for p in pts.windows(2) {
@@ -240,6 +246,7 @@ impl Gfx {
                     }
                 }
                 Lit::Ring(c, x, y, r, w) => draw_circle_lines(x, y, r - w / 2.0, w, c),
+                Lit::Tri(c, a, b, d) => draw_triangle(a, b, d, c),
             }
         }
         gl_use_default_material();

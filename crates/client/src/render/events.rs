@@ -1,5 +1,6 @@
 //! Ereignisse aus den Snapshots (Sound, Partikel), laufende Emitter, Umgebung, Partikel-Sortierung.
 
+use std::collections::HashMap;
 use std::f32::consts::{PI, TAU};
 
 use panzer_core::consts::*;
@@ -13,6 +14,7 @@ use crate::gfx::*;
 use crate::particles::{o, Opt, FIRE_GRAD, P};
 use crate::raster::{mix, shade};
 use crate::sprites::{box_color, FW_COLORS, PRISM_COLORS};
+use macroquad::prelude::vec2;
 
 /// Klang beim Abfeuern je Geschossart
 fn shot_sound(k: Kind) -> Option<&'static str> {
@@ -75,6 +77,12 @@ fn bounce_fx(k: Kind) -> bool {
     )
 }
 
+/// Nur die Geschichte lebender Geschosse behalten (`live` ist sortiert).
+/// Andersherum verlieren lebende Geschosse jedes Bild ihre Spur: keine Schweife, keine Abpraller.
+fn keep_live<V>(hist: &mut HashMap<u32, V>, live: &[u32]) {
+    hist.retain(|k, _| live.binary_search(k).is_ok());
+}
+
 pub fn light_r(r: f32) -> usize {
     let r = (r as usize).max(2);
     let step = if r < 24 {
@@ -93,13 +101,16 @@ impl Renderer {
     }
 
     pub(super) fn events(&mut self, view: &View, f: &Frame, now: f64) {
+        // Schrot und Salven: ein Mündungsfeuer pro Panzer und Bild, sonst addiert es sich zu Weiß
+        let mut flashed = [false; MAX_PLAYERS];
         for p in &view.shots {
             if !self.seen_shots.insert(p.id) {
                 continue;
             }
             self.sound(shot_sound(p.kind).unwrap_or("shot"), Some(p.x as f32), 1.0);
             if let Some(tk) = view.tank(p.owner) {
-                if !no_muzzle(p.kind) && tk.alive && !tk.hidden {
+                let first = !std::mem::replace(&mut flashed[p.owner.min(MAX_PLAYERS - 1)], true);
+                if first && !no_muzzle(p.kind) && tk.alive && !tk.hidden {
                     self.muzzle(tk.x as f32, tk.y as f32, tk.a as f32, tank_scale(&tk.eff) as f32, p.kind);
                 }
             }
@@ -418,10 +429,64 @@ impl Renderer {
         }
         use Kind::*;
         let big = matches!(kind, Rocket | Nuke | Hole | Frag | Sg | Cannon | Rc | Plasma);
-        if kind == Cannon {
-            self.shake(0.25, Some((x, y)));
+        // Energie-Waffen blitzen in ihrer eigenen Farbe, alles andere warm wie Pulver
+        let fc = match kind {
+            Plasma => [120, 255, 180],
+            Phase => [120, 225, 255],
+            Ice => [170, 225, 255],
+            Swap => [200, 140, 255],
+            Hole => [180, 110, 255],
+            Gold => [255, 215, 90],
+            _ => [255, 196, 110],
+        };
+        if matches!(kind, Rocket | Rc | Mrk | Fw) {
+            // Raketen zünden erst hinter dem Rohr: kleiner Blitz vorne, Rückstrahl hinter dem Panzer
+            let (bx, by) = (x - a.cos() * 15.0 * k, y - a.sin() * 15.0 * k);
+            let n = if kind == Mrk { 1.0 } else { 4.0 };
+            self.parts.burst(
+                P::Smoke,
+                bx,
+                by,
+                n,
+                80.0,
+                0.9,
+                6.0,
+                o([112, 112, 118]).drag(2.6).grav(-6.0).fan(a + PI, 0.7),
+            );
+            self.parts.burst(P::Fire, bx, by, n, 110.0, 0.22, 6.0, Opt::default().drag(4.0).fan(a + PI, 0.35));
+            self.parts.add_dir(P::Muzzle, mx, my, a, 0.06, 12.0 * k, o(fc));
+            return;
         }
-        self.parts.add(P::Flash, mx, my, 0.0, 0.0, 0.09, if big { 30.0 } else { 20.0 }, o([255, 214, 150]));
+        let len = k * match kind {
+            Cannon => 42.0,
+            Sg | Nv => 24.0,
+            Mg | Sb | Spb => self.parts.u(12.0, 18.0),
+            _ if big => 28.0,
+            _ => 19.0,
+        };
+        let life = match kind {
+            Cannon => 0.11,
+            Mg | Sb | Spb => 0.05,
+            _ => 0.075,
+        };
+        let jitter = self.parts.u(-0.06, 0.06);
+        self.parts.add_dir(P::Muzzle, mx, my, a + jitter, life, len, o(fc));
+        if matches!(kind, Sg | Nv) {
+            // Schrot: breiter, dreizackiger Blitz
+            for side in [-1.0, 1.0] {
+                self.parts.add_dir(P::Muzzle, mx, my, a + side * 0.34, life, len * 0.62, o(fc));
+            }
+        }
+        self.parts.add(
+            P::Flash,
+            mx,
+            my,
+            0.0,
+            0.0,
+            0.09,
+            if big { 30.0 } else { 20.0 },
+            o(mix(fc, [255, 236, 200], 0.5)),
+        );
         self.parts.burst(
             P::Spark,
             mx,
@@ -442,6 +507,14 @@ impl Renderer {
             if big { 6.0 } else { 4.0 },
             o([96, 98, 106]).drag(3.0).grav(-8.0),
         );
+        if kind == Cannon {
+            // Mündungsknall: Rauchkranz, Druckring und Staub, der unter dem Panzer aufwirbelt
+            self.shake(0.25, Some((x, y)));
+            self.parts.burst(P::Smoke, mx, my, 10.0, 130.0, 1.1, 7.0, o([92, 92, 98]).drag(3.6).grav(-6.0));
+            self.parts.burst(P::Smoke, mx, my, 5.0, 160.0, 0.9, 6.0, o([110, 108, 112]).drag(3.0).fan(a, 0.5));
+            self.parts.add(P::Ring, mx, my, 0.0, 0.0, 0.26, 36.0, o([255, 214, 170]));
+            self.parts.burst(P::Dust, x, y, 10.0, 110.0, 0.8, 7.0, o([168, 158, 146]).drag(3.0));
+        }
     }
 
     fn explosion(&mut self, x: f32, y: f32, z: f32) {
@@ -544,19 +617,120 @@ impl Renderer {
         }
     }
 
-    fn bounce(&mut self, x: f32, y: f32, kind: Kind, owner: usize, track: [u8; 3]) {
-        if let Some(m) = self.maze.as_mut() {
-            m.dot(x, y, 2.0, shade(track, 0.8), 1.0); // Einschlagspur
+    /// Abpraller: Funken fliegen von der Wand weg (n = Wandnormale), schwere Geschosse wirbeln Staub auf
+    #[allow(clippy::too_many_arguments)]
+    fn bounce(&mut self, x: f32, y: f32, kind: Kind, owner: usize, track: [u8; 3], dust: [u8; 3], n: (f32, f32)) {
+        let na = n.1.atan2(n.0);
+        let (tx, ty) = (-n.1, n.0);
+        match kind {
+            Kind::Saw => {
+                // Sägeblatt schleift an der Wand: Funkenregen entlang der Wand und eine Kerbe
+                if let Some(m) = self.maze.as_mut() {
+                    m.line(x - tx * 6.0, y - ty * 6.0, x + tx * 6.0, y + ty * 6.0, 2.0, shade(track, 0.7), 1.0);
+                }
+                for side in [-1.0, 1.0] {
+                    self.parts.burst(
+                        P::Spark,
+                        x,
+                        y,
+                        7.0,
+                        420.0,
+                        0.32,
+                        2.0,
+                        Opt::default().drag(4.0).grav(60.0).fan(na + side * 1.15, 0.32),
+                    );
+                }
+                self.parts.burst(P::Spark, x, y, 4.0, 300.0, 0.25, 2.0, Opt::default().drag(5.0).fan(na, 0.5));
+                self.parts.add(P::Flash, x, y, 0.0, 0.0, 0.14, 22.0, o([235, 240, 255]));
+                self.sound("grind", Some(x), 1.0);
+            }
+            Kind::Cannon => {
+                // schwere Kugel: Delle, Staubwolke und Wandsplitter
+                if let Some(m) = self.maze.as_mut() {
+                    m.dot(x, y, 5.0, shade(track, 0.7), 1.0);
+                }
+                self.parts.burst(P::Dust, x, y, 14.0, 170.0, 0.9, 8.0, o(dust).drag(3.0).fan(na, 1.2));
+                for _ in 0..5 {
+                    let b = na + self.parts.u(-0.9, 0.9);
+                    let v = self.parts.u(80.0, 220.0);
+                    let (life, size, spin) =
+                        (self.parts.u(0.5, 0.9), self.parts.u(2.5, 4.5), self.parts.u(-12.0, 12.0));
+                    let c = mix(dust, [60, 52, 46], self.parts.u(0.3, 0.7));
+                    self.parts.add(P::Debris, x, y, b.cos() * v, b.sin() * v, life, size, o(c).drag(3.5).spin(spin));
+                }
+                self.parts.burst(P::Spark, x, y, 5.0, 240.0, 0.22, 2.0, Opt::default().drag(6.0).fan(na, 0.9));
+                self.parts.add(P::Flash, x, y, 0.0, 0.0, 0.12, 26.0, o([255, 220, 170]));
+                self.parts.add(P::Ring, x, y, 0.0, 0.0, 0.25, 30.0, o([200, 190, 175]));
+                self.shake(0.12, Some((x, y)));
+                self.sound("thud", Some(x), 1.0);
+            }
+            _ => {
+                if let Some(m) = self.maze.as_mut() {
+                    m.dot(x, y, 2.0, shade(track, 0.8), 1.0); // Einschlagspur
+                }
+                let c = if kind == Kind::Bnc { [255, 120, 200] } else { mix(COLORS[owner], [255, 230, 160], 0.6) };
+                self.parts.burst(P::Spark, x, y, 5.0, 230.0, 0.22, 2.0, Opt::default().drag(6.0).fan(na, 0.85));
+                self.parts.add(P::Flash, x, y, 0.0, 0.0, 0.1, 14.0, o(c));
+                self.parts.add(P::Dust, x, y, n.0 * 30.0, n.1 * 30.0, 0.45, 3.5, o(dust).drag(3.0));
+                if kind == Kind::Bnc {
+                    self.parts.add(P::Ring, x, y, 0.0, 0.0, 0.22, 18.0, o(c));
+                }
+                self.sound(if kind == Kind::Bnc { "bnc" } else { "tink" }, Some(x), 1.0);
+            }
         }
-        let c = if kind == Kind::Bnc { [255, 120, 200] } else { mix(COLORS[owner], [255, 230, 160], 0.6) };
-        self.parts.burst(P::Spark, x, y, 4.0, 190.0, 0.22, 2.0, Opt::default().drag(6.0));
-        self.parts.add(P::Flash, x, y, 0.0, 0.0, 0.1, 14.0, o(c));
-        self.sound(if kind == Kind::Bnc { "bnc" } else { "tink" }, Some(x), 1.0);
+    }
+
+    /// Geschoss ist weg, ohne dass es knallt: kurz verpuffen statt einfach zu verschwinden
+    fn fizzle(&mut self, x: f32, y: f32, kind: Kind, owner: usize, dust: [u8; 3]) {
+        use Kind::*;
+        let owner = owner.min(MAX_PLAYERS - 1);
+        match kind {
+            B | Mg | Sg | Frg | Nv | Sb | Spb | Seek | Gold | Wave | Split | Double | Corner | Dist | Spk => {
+                let c = match kind {
+                    Mg | Sg | Frg => [255, 210, 140],
+                    Gold => [255, 210, 80],
+                    Wave => [120, 255, 210],
+                    Spk => FW_COLORS[self.parts.rng.below(FW_COLORS.len())],
+                    _ => mix(COLORS[owner], [255, 230, 180], 0.5),
+                };
+                self.parts.add(P::Flash, x, y, 0.0, 0.0, 0.12, 12.0, o(c));
+                if kind != Spk && kind != Frg {
+                    self.parts.burst(P::Spark, x, y, 3.0, 120.0, 0.16, 2.0, Opt::default().drag(6.0));
+                    self.parts.add(P::Smoke, x, y, 0.0, -6.0, 0.5, 3.0, o([110, 110, 118]).drag(2.0).grav(-10.0));
+                }
+            }
+            Bnc => {
+                self.parts.add(P::Ring, x, y, 0.0, 0.0, 0.25, 20.0, o([255, 120, 200]));
+                self.parts.burst(P::Star, x, y, 6.0, 90.0, 0.4, 1.6, o([255, 150, 215]).drag(3.0));
+            }
+            Ice => self.parts.burst(P::Shard, x, y, 8.0, 160.0, 0.4, 2.0, o([200, 235, 255]).drag(4.0)),
+            Swap | Phase => {
+                let c = if kind == Swap { [190, 120, 255] } else { [120, 225, 255] };
+                self.parts.add(P::Ring, x, y, 0.0, 0.0, 0.28, 22.0, o(c));
+                self.parts.burst(P::Star, x, y, 8.0, 110.0, 0.45, 1.8, o(c).drag(3.0));
+            }
+            Plasma => {
+                self.parts.add(P::Ring, x, y, 0.0, 0.0, 0.3, 30.0, o([90, 255, 170]));
+                self.parts.burst(P::Spark, x, y, 8.0, 200.0, 0.25, 2.0, Opt::default().drag(5.0));
+            }
+            Saw => {
+                // Blatt zerspringt
+                self.parts.burst(P::Shard, x, y, 10.0, 220.0, 0.45, 3.0, o([200, 206, 220]).drag(3.5));
+                self.parts.burst(P::Spark, x, y, 6.0, 260.0, 0.2, 2.0, Opt::default().drag(5.0));
+            }
+            Cannon => {
+                self.parts.burst(P::Dust, x, y, 10.0, 90.0, 0.8, 8.0, o(dust).drag(3.0));
+                self.parts.burst(P::Debris, x, y, 3.0, 60.0, 0.5, 4.0, o([46, 46, 54]).drag(4.0).spin(8.0));
+            }
+            Rang => self.parts.burst(P::Dust, x, y, 6.0, 60.0, 0.5, 5.0, o(dust).drag(3.0)),
+            _ => {}
+        }
     }
 
     /// Merkt sich die letzten Positionen jedes Geschosses (Leuchtschweif, Abpraller)
-    pub(super) fn track_shots(&mut self, view: &View, now: f64) {
+    pub(super) fn track_shots(&mut self, view: &View, arena: &Arena, now: f64) {
         let track = self.maze_track_color();
+        let dust = arena.theme().dust;
         let mut bounces = Vec::new();
         for p in &view.shots {
             let (x, y) = (p.x as f32, p.y as f32);
@@ -572,7 +746,11 @@ impl Renderer {
             if h.len() >= 2 && bounce_fx(p.kind) {
                 let (ox, oy) = (lx - h[h.len() - 2].0, ly - h[h.len() - 2].1);
                 if (dx * ox < 0.0 && ox.abs() > 0.3) || (dy * oy < 0.0 && oy.abs() > 0.3) {
-                    bounces.push((lx, ly, p.kind, p.owner));
+                    // Wandnormale: Unterschied der Flugrichtungen vor und nach dem Abprall
+                    let (dl, ol) = (dx.hypot(dy).max(1e-3), ox.hypot(oy).max(1e-3));
+                    let (nx, ny) = (dx / dl - ox / ol, dy / dl - oy / ol);
+                    let nl = nx.hypot(ny).max(1e-3);
+                    bounces.push((lx, ly, p.kind, p.owner, (nx / nl, ny / nl)));
                 }
             }
             h.push((x, y, now));
@@ -585,9 +763,20 @@ impl Renderer {
         self.shot_ids.clear();
         self.shot_ids.extend(view.shots.iter().map(|s| s.id));
         self.shot_ids.sort_unstable();
-        self.hist.retain(|k, _| self.shot_ids.binary_search(k).is_err());
-        for (x, y, k, o) in bounces {
-            self.bounce(x, y, k, o, track);
+        let mut gone = Vec::new();
+        for s in &self.last_shots {
+            if self.shot_ids.binary_search(&s.id).is_err() {
+                gone.push((s.x as f32, s.y as f32, s.kind, s.owner));
+            }
+        }
+        self.last_shots.clear();
+        self.last_shots.extend(view.shots.iter().cloned());
+        keep_live(&mut self.hist, &self.shot_ids);
+        for (x, y, k, o, n) in bounces {
+            self.bounce(x, y, k, o, track, dust, n);
+        }
+        for (x, y, k, o) in gone {
+            self.fizzle(x, y, k, o, dust);
         }
     }
 
@@ -729,6 +918,9 @@ impl Renderer {
                 let (vx, vy) = (self.parts.u(-60.0, 60.0), self.parts.u(-60.0, 60.0));
                 self.parts.add(P::Spark, fx, fy, vx, vy, 0.2, 2.0, Opt::default().drag(4.0));
             }
+            if let Some(p) = prev.as_ref().filter(|p| p.alive) {
+                self.detect_action(p, tk, view, now);
+            }
             if let Some(p) = prev.filter(|p| p.alive) {
                 if p.eff.has(Eff::Frozen) && !eff.has(Eff::Frozen) {
                     // Eis zerspringt
@@ -857,6 +1049,11 @@ impl Renderer {
                             self.parts.add(P::Smoke, x, y, 0.0, -20.0, 1.0, 6.0, o([40, 38, 40]).drag(1.2).grav(-14.0));
                         }
                     }
+                }
+                Kind::Cannon if self.chance(26.0 * vdt) => {
+                    // schwere Kugel wirbelt Staub vom Boden auf
+                    let (vx, vy) = (self.parts.u(-22.0, 22.0), self.parts.u(-22.0, 22.0));
+                    self.parts.add(P::Dust, x + vx * 0.3, y + vy * 0.3, vx, vy, 0.8, 6.0, o(th.dust).drag(2.0));
                 }
                 Kind::Ice if self.chance(35.0 * vdt) => {
                     let (vx, vy) = (self.parts.u(-20.0, 20.0), self.parts.u(-20.0, 20.0));
@@ -1075,8 +1272,41 @@ impl Renderer {
                     let c = shade(p.color, (1.0 - k).powf(1.2));
                     g.lit_ring(col(c), x, y, p.size * ease_out(k), (4.0 * (1.0 - k)).round().max(1.0));
                 }
+                P::Muzzle => {
+                    // Stern aus einer langen Flammenzunge und zwei kurzen Seitenzacken, innen weiß
+                    let f = (1.0 - k).powf(0.8);
+                    let len = p.size * (0.75 + 0.5 * k);
+                    let w = p.size * 0.2;
+                    let (ca, sa) = (p.angle.cos(), p.angle.sin());
+                    let at = |fx: f32, fy: f32| vec2(x + fx * ca - fy * sa, y + fx * sa + fy * ca);
+                    g.lit_tri(colk(p.color, 1.3 * f), at(0.0, -w), at(len, 0.0), at(0.0, w));
+                    for side in [-1.0, 1.0] {
+                        g.lit_tri(
+                            colk(p.color, 0.9 * f),
+                            at(-1.0, 0.0),
+                            at(len * 0.38, side * len * 0.36),
+                            at(len * 0.18, 0.0),
+                        );
+                    }
+                    g.lit_tri(colk([255, 250, 235], 1.6 * f), at(0.0, -w * 0.5), at(len * 0.55, 0.0), at(0.0, w * 0.5));
+                    g.light(p.color, x + ca * len * 0.3, y + sa * len * 0.3, len * 0.9, 7.0 * f);
+                }
             }
         }
         (low, polys_low, high, polys_high)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn history_survives_only_for_live_shots() {
+        let mut hist: HashMap<u32, Vec<u8>> = [(1, vec![1]), (4, vec![4]), (9, vec![9])].into_iter().collect();
+        keep_live(&mut hist, &[2, 4, 9]);
+        let mut left: Vec<u32> = hist.keys().copied().collect();
+        left.sort_unstable();
+        assert_eq!(left, vec![4, 9]);
     }
 }

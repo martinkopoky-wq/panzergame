@@ -20,6 +20,8 @@ pub enum P {
     Flash,
     Star,
     Ring,
+    /// geformtes Mündungsfeuer: angle = Schussrichtung, size = Länge
+    Muzzle,
 }
 
 pub const FIRE_GRAD: [[u8; 3]; 7] =
@@ -118,6 +120,15 @@ impl Particles {
                 angle,
                 spin: opt.spin,
             });
+        }
+    }
+
+    /// Partikel mit fester Ausrichtung (Mündungsfeuer)
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_dir(&mut self, kind: P, x: f32, y: f32, angle: f32, life: f32, size: f32, opt: Opt) {
+        self.add(kind, x, y, 0.0, 0.0, life, size, opt);
+        if let Some(p) = self.items.last_mut().filter(|p| p.kind == kind && p.age == 0.0) {
+            p.angle = angle;
         }
     }
 

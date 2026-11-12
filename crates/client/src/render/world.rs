@@ -38,6 +38,62 @@ fn bolt_points(x0: f32, y0: f32, x1: f32, y1: f32, rnd: &mut Rng, depth: usize) 
     pts
 }
 
+/// Bumerang mit Knick nahe der Mitte, Arme im Winkel von 110°
+fn boomerang(x: f32, y: f32, a: f32, alpha: f32, c: [u8; 3]) {
+    let (ex, ey) = (x - a.cos() * 2.5, y - a.sin() * 2.5);
+    let len = 11.0;
+    let arms = [a - 0.96, a + 0.96].map(|h| (ex + h.cos() * len, ey + h.sin() * len, h));
+    for &(tx, ty, _) in &arms {
+        draw_line(ex, ey, tx, ty, 6.5, cola(DARKC, alpha));
+        draw_circle(tx, ty, 3.2, cola(DARKC, alpha));
+    }
+    draw_circle(ex, ey, 4.2, cola(DARKC, alpha));
+    let wood = [196, 128, 58];
+    for &(tx, ty, h) in &arms {
+        draw_line(ex, ey, tx, ty, 4.0, cola(wood, alpha));
+        draw_circle(tx, ty, 2.0, cola(wood, alpha));
+        let (s0, s1) = (len * 0.55, len * 0.8);
+        draw_line(ex + h.cos() * s0, ey + h.sin() * s0, ex + h.cos() * s1, ey + h.sin() * s1, 4.0, cola(c, alpha));
+    }
+    draw_circle(ex, ey, 2.8, cola([226, 160, 86], alpha));
+}
+
+/// Bärenfalle von oben: offener Bügelring mit Zähnen nach innen, Auslöseteller in Spielerfarbe
+/// und zwei Federhebel zur Seite (die Hebel unterscheiden sie vom runden Sägeblatt)
+fn draw_trap(g: &mut Gfx, x: f32, y: f32, c: [u8; 3], alpha: f32) {
+    let r = 9.0;
+    let dark = cola(DARKC, alpha);
+    let steel = cola([150, 156, 170], alpha);
+    g.shadow(x + 2.0, y + 3.0, 10.0, alpha);
+    for side in [-1.0f32, 1.0] {
+        // Federhebel mit Öse
+        let (x0, x1) = (x + side * (r - 2.0), x + side * (r + 9.0));
+        draw_line(x0, y, x1, y, 5.0, dark);
+        draw_line(x0, y, x1, y, 2.5, steel);
+        draw_circle(x1, y, 3.2, dark);
+        draw_circle_lines(x1, y, 2.2, 1.2, steel);
+    }
+    draw_circle(x, y, r + 1.5, dark);
+    draw_circle(x, y, r - 2.5, cola([40, 38, 40], alpha));
+    draw_circle_lines(x, y, r - 0.5, 2.5, cola([120, 126, 140], alpha));
+    // Zähne: Zickzack innen am Ring, je Backe einer
+    let teeth = cola([226, 228, 236], alpha);
+    for side in [0.0, PI] {
+        let mut last: Option<(f32, f32)> = None;
+        for j in 0..=8 {
+            let b = side + FRAC_PI_2 + 0.25 + j as f32 * (PI - 0.5) / 8.0;
+            let rr = if j % 2 == 0 { r - 2.0 } else { r - 5.0 };
+            let p = (x + b.cos() * rr, y + b.sin() * rr);
+            if let Some(l) = last {
+                draw_line(l.0, l.1, p.0, p.1, 1.4, teeth);
+            }
+            last = Some(p);
+        }
+    }
+    draw_circle(x, y, 2.6, cola(c, alpha));
+    draw_circle_lines(x, y, 2.6, 1.0, dark);
+}
+
 fn pf(p: &[(i16, i16)]) -> Vec<(f32, f32)> {
     p.iter().map(|&(x, y)| (x as f32, y as f32)).collect()
 }
@@ -158,6 +214,19 @@ impl Renderer {
                         _ => [255, 190, 90],
                     };
                     let bright = mix(hot, [255, 255, 255], 0.35);
+                    if age > 0.1 && self.still(sid, now) {
+                        // von der Zündpause angehalten: Uhrring mit laufendem Zeiger
+                        let hand = t * 7.0 + sid as f32;
+                        g.lit_ring(col([184, 178, 241]), x, y, r + 5.0, 1.0);
+                        draw_line(
+                            x,
+                            y,
+                            x + hand.cos() * (r + 4.0),
+                            y + hand.sin() * (r + 4.0),
+                            1.0,
+                            col([220, 215, 255]),
+                        );
+                    }
                     self.trail(g, sid, bright, r + 3.0, if p.kind == Kind::B { 5.0 } else { 4.0 });
                     g.light(bright, x, y, r * 2.5 + 8.0, 6.0);
                     draw_circle(x, y, r + 1.0, col(DARKC));
@@ -189,6 +258,9 @@ impl Renderer {
                     g.light([255, 230, 160], fx, fy, 10.0, 8.0);
                 }
                 Kind::Bnc => {
+                    if age > 0.1 && self.still(sid, now) {
+                        g.lit_ring(col([184, 178, 241]), x, y, BOUNCY_R as f32 + 6.0, 1.0);
+                    }
                     self.trail(g, sid, [255, 90, 190], 9.0, 5.0);
                     g.light([255, 80, 180], x, y, 22.0, 5.0);
                     draw_circle(x, y, BOUNCY_R as f32 + 1.0, col(DARKC));
@@ -210,15 +282,7 @@ impl Renderer {
                     poly(&pts, col([170, 225, 255]));
                     poly_lines(&pts, 1.0, col([240, 252, 255]), true);
                 }
-                Kind::Rang => {
-                    let a = t * 18.0 + sid as f32;
-                    g.light([255, 170, 80], x, y, 16.0, 2.0);
-                    for da in [0.0, 2.0] {
-                        let end = (x + (a + da).cos() * 9.0, y + (a + da).sin() * 9.0);
-                        draw_line(x, y, end.0, end.1, 6.0, col([120, 70, 25]));
-                        draw_line(x, y, end.0, end.1, 3.0, col([200, 130, 55]));
-                    }
-                }
+                Kind::Rang => self.draw_rang(g, sid, x, y, c, t),
                 Kind::Mine | Kind::Trap => {
                     let mine = p.kind == Kind::Mine;
                     // eigene Minen und scharf werdende sieht man, die anderen nur, wenn man genau hinschaut
@@ -232,10 +296,13 @@ impl Renderer {
                     if self.my_eff.has(Eff::Radar) {
                         alpha = 1.0;
                     }
-                    let item = if mine { Item::Mine } else { Item::Trap };
-                    let icon = &g.spr.icons[&item];
-                    g.sprite(icon, x, y, 0.0, if mine { 0.95 } else { 1.0 }, Color::new(1.0, 1.0, 1.0, alpha));
-                    if mine {
+                    if !mine {
+                        draw_trap(g, x, y, c, alpha);
+                        continue;
+                    }
+                    let icon = &g.spr.icons[&Item::Mine];
+                    g.sprite(icon, x, y, 0.0, 0.95, Color::new(1.0, 1.0, 1.0, alpha));
+                    {
                         let lit = age > MINE_ARM as f32 && (t * 3.0 + sid as f32) as i32 % 2 == 1;
                         if lit {
                             draw_circle(x, y, 3.0, cola([255, 120, 120], alpha));
@@ -336,38 +403,38 @@ impl Renderer {
                     self.ball(g, sid, x, y, 5.0, [255, 200, 40], false);
                 }
                 Kind::Phase => {
+                    let inside =
+                        panzer_core::geom::circle_hits_walls(x as f64, y as f64, 3.0, arena.near(x as f64, y as f64));
                     self.trail(g, sid, [80, 220, 255], 10.0, 6.0);
                     g.light([80, 220, 255], x, y, 22.0, 6.0);
-                    draw_circle(x, y, 4.0, col([180, 245, 255]));
-                    draw_circle_lines(x, y, 6.0, 1.0, col([60, 200, 240]));
+                    if inside {
+                        // geht gerade durch die Wand: flimmernder Ring, Kern halb durchsichtig
+                        g.lit_ring(col([120, 235, 255]), x, y, 8.0 + 3.0 * (t * 30.0).sin().abs(), 1.0);
+                        g.light([200, 250, 255], x, y, 12.0, 5.0);
+                        draw_circle(x, y, 4.0, cola([180, 245, 255], 0.55));
+                    } else {
+                        draw_circle(x, y, 4.0, col([180, 245, 255]));
+                        draw_circle_lines(x, y, 6.0, 1.0, col([60, 200, 240]));
+                    }
                 }
-                Kind::Cannon => {
-                    self.trail(g, sid, [255, 150, 60], 16.0, 4.0);
-                    let cr = CANNON_R as f32;
-                    g.shadow(x + 3.0, y + 4.0, cr + 2.0, 1.0);
-                    draw_circle(x, y, cr + 1.0, col([10, 10, 14]));
-                    draw_circle(x, y, cr, col([40, 40, 48]));
-                    draw_circle(x - 4.0, y - 4.0, 3.0, col([120, 122, 136]));
-                }
-                Kind::Saw => {
-                    let a = t * 22.0 + sid as f32;
-                    let sr = SAW_R as f32;
-                    let pts: Vec<(f32, f32)> = (0..16)
-                        .map(|j| {
-                            let r = if j % 2 == 0 { sr } else { sr - 3.0 };
-                            (x + (a + j as f32 * PI / 8.0).cos() * r, y + (a + j as f32 * PI / 8.0).sin() * r)
-                        })
-                        .collect();
-                    g.light([230, 235, 255], x, y, 20.0, 3.0);
-                    poly(&pts, col([190, 196, 210]));
-                    poly_lines(&pts, 1.0, col([80, 84, 96]), true);
-                    draw_circle(x, y, 3.0, col(c));
-                }
+                Kind::Cannon => self.draw_cannon(g, sid, x, y, age, c),
+                Kind::Saw => self.draw_saw(g, sid, x, y, c, t),
                 Kind::Plasma => {
                     self.trail(g, sid, [90, 255, 170], 14.0, 6.0);
-                    g.light([60, 255, 150], x, y, 40.0, 7.0);
-                    g.light([220, 255, 235], x, y, 14.0, 8.0);
-                    draw_circle(x, y, PLASMA_R as f32, col([120, 255, 190]));
+                    g.light([60, 255, 150], x, y, 40.0, 5.0);
+                    g.light([220, 255, 235], x, y, 9.0, 4.0);
+                    // wabernde Hülle um einen hellen Kern
+                    let pr = PLASMA_R as f32;
+                    let hull: Vec<(f32, f32)> = (0..18)
+                        .map(|j| {
+                            let b = j as f32 * TAU / 18.0;
+                            let r = pr * (1.0 + 0.1 * (4.0 * b + t * 13.0).sin() + 0.06 * (7.0 * b - t * 9.0).sin());
+                            (x + b.cos() * r, y + b.sin() * r)
+                        })
+                        .collect();
+                    poly(&hull, col([90, 235, 160]));
+                    draw_circle(x, y, pr * 0.72, col([150, 255, 205]));
+                    poly_lines(&hull, 1.0, col([210, 255, 230]), true);
                     draw_circle(x, y, 3.0, col([240, 255, 245]));
                     let mut rnd = Rng::new(sid as u64 * 7 + (t * 20.0) as u64);
                     for _ in 0..3 {
@@ -387,6 +454,37 @@ impl Renderer {
                         Kind::Mrk => c,
                         _ => [255, 90, 90],
                     };
+                    if p.kind == Kind::Rc {
+                        if let Some(tk) = view.tank(owner).filter(|t| t.alive && !t.hidden) {
+                            // Funkverbindung: Signalpunkte wandern vom lenkenden Panzer zur Rakete
+                            let (ox, oy) = (tk.x as f32, tk.y as f32);
+                            let d = (x - ox).hypot(y - oy);
+                            let n = (d / 16.0) as usize;
+                            for j in 1..n {
+                                let s = j as f32 / n as f32;
+                                let pulse = 0.5 + 0.5 * (s * 12.0 - t * 9.0).sin();
+                                draw_circle(
+                                    ox + (x - ox) * s,
+                                    oy + (y - oy) * s,
+                                    1.5,
+                                    cola([90, 255, 130], 0.25 + 0.4 * pulse),
+                                );
+                            }
+                            let to = (y - oy).atan2(x - ox);
+                            for j in 0..2 {
+                                let ph = (t * 1.5 + j as f32 * 0.5).fract();
+                                arc(
+                                    ox,
+                                    oy,
+                                    16.0 + 14.0 * ph,
+                                    to - 0.5,
+                                    to + 0.5,
+                                    1.5,
+                                    cola([90, 255, 130], 0.7 * (1.0 - ph)),
+                                );
+                            }
+                        }
+                    }
                     let a = if p.kind == Kind::Fw { self.heading(sid).unwrap_or(0.0) } else { ang };
                     rocket(g, x, y, a, rc, k, (9.0 + 4.0 * (t * 45.0 + sid as f32).sin()) * k);
                     g.light([255, 140, 50], x - a.cos() * 16.0 * k, y - a.sin() * 16.0 * k, 28.0 * k, 6.0);
@@ -394,13 +492,7 @@ impl Renderer {
                         g.light([80, 255, 120], x, y, 10.0, 7.0); // Funk-Antenne blinkt
                     }
                 }
-                Kind::Sticky => {
-                    let blink = (age * (4.0 + 8.0 * (age / 3.0).min(1.0))) as i32 % 2 == 1;
-                    g.light([120, 255, 80], x, y, 18.0, if blink { 7.0 } else { 4.0 });
-                    draw_circle(x, y, 6.0, col([40, 90, 30]));
-                    draw_circle(x, y, 5.0, col([110, 220, 70]));
-                    draw_circle(x, y, 2.0, col(if blink { [255, 70, 60] } else { [90, 30, 30] }));
-                }
+                Kind::Sticky => self.draw_sticky_field(sid, x, y, age, life, now),
                 Kind::Gl => {
                     let k = (age / (GL_DIST / GL_SPEED) as f32).min(1.0);
                     let h = 4.0 * k * (1.0 - k);
@@ -410,7 +502,7 @@ impl Renderer {
                     draw_circle(x, gy, 5.0 + 2.0 * h, col([100, 122, 58]));
                     g.light([255, 120, 60], x, gy, 10.0, 2.0 + 3.0 * ((t * 12.0) as i32 % 2) as f32);
                 }
-                Kind::Oil | Kind::Oilf => self.draw_oil(g, x, y, p.kind, age, t),
+                Kind::Oil | Kind::Oilf => self.draw_oil(g, sid, x, y, p.kind, age, t),
                 Kind::Sentry => self.draw_sentry(g, x, y, owner, age, ang, t),
                 Kind::Spider => self.draw_spider(g, x, y, owner, age, ang, t),
                 Kind::Arty => self.draw_target(g, sid, x, y, age, life, ARTY_BLAST as f32),
@@ -431,23 +523,201 @@ impl Renderer {
         Some((b.1 - a.1).atan2(b.0 - a.0))
     }
 
-    fn draw_oil(&self, g: &mut Gfx, x: f32, y: f32, kind: Kind, age: f32, t: f32) {
+    /// Öllache: unregelmäßiger Rand, schillernder Film und ein Glanzpunkt
+    #[allow(clippy::too_many_arguments)]
+    fn draw_oil(&self, g: &mut Gfx, sid: u32, x: f32, y: f32, kind: Kind, age: f32, t: f32) {
         let life = if kind == Kind::Oil { OIL_LIFE } else { OIL_BURN } as f32;
         let k = (age / 0.4).min((life - age) / 0.6).min(1.0);
         if k <= 0.0 {
             return;
         }
-        let r = (OIL_R as f32 * (0.5 + 0.5 * (age / 0.4).min(1.0))).round().max(3.0);
-        g.puff(x, y, r, [16, 14, 20], 200.0 / 255.0 * k);
-        for (j, c) in [[90, 60, 140], [40, 110, 120]].iter().enumerate() {
-            // Ölfilm schillert
-            let j = j as f32;
-            let rr = r * (0.6 - 0.2 * j);
-            arc(x - 4.0 + 6.0 * j, y - 3.0 + 3.0 * j, rr, -(t * 0.7 + j) - 1.8, -(t * 0.7 + j), 2.0, cola(*c, k));
+        let r = (OIL_R as f32 * (0.5 + 0.5 * ease_out(age / 0.4))).round().max(3.0);
+        let mut rnd = Rng::new(sid as u64 * 977 + 3);
+        const N: usize = 18;
+        let mut rs = [0.0f32; N];
+        for v in rs.iter_mut() {
+            *v = rnd.uniform(0.8, 1.1) as f32;
         }
+        let pts: Vec<(f32, f32)> = (0..N)
+            .map(|j| {
+                let b = j as f32 * TAU / N as f32;
+                let rr = r * (rs[j] + rs[(j + 1) % N] + rs[(j + N - 1) % N]) / 3.0;
+                (x + b.cos() * rr, y + b.sin() * rr * 0.88)
+            })
+            .collect();
+        g.puff(x, y, r * 1.12, [16, 14, 20], 0.3 * k);
+        poly(&pts, cola([18, 16, 24], 0.8 * k));
+        for (j, c) in [[120, 70, 170], [40, 140, 150], [170, 140, 60]].iter().enumerate() {
+            // Ölfilm schillert in wandernden Regenbogen-Bögen
+            let j = j as f32;
+            let a0 = -(t * 0.6 + j * 1.3);
+            arc(x - 5.0 + 5.0 * j, y - 4.0 + 3.0 * j, r * (0.62 - 0.14 * j), a0 - 1.6, a0, 2.0, cola(*c, 0.55 * k));
+        }
+        draw_circle(x - r * 0.35, y - r * 0.3, 3.0, cola([200, 205, 225], 0.45 * k));
+        draw_circle(x - r * 0.35 + 5.0, y - r * 0.3 + 2.0, 1.5, cola([200, 205, 225], 0.3 * k));
         if kind == Kind::Oilf {
             g.light([255, 120, 30], x, y, OIL_R as f32 * 2.2, 7.0 * k);
             g.light([255, 220, 120], x, y, OIL_R as f32, 6.0 * k);
+        }
+    }
+
+    /// Steht das Geschoss gerade still? (seit ein paar Bildern keine neue Position)
+    fn still(&self, sid: u32, now: f64) -> bool {
+        // 0,15 s: kurze Netzaussetzer sollen keine stehenden Kugeln vortäuschen
+        self.hist.get(&sid).and_then(|h| h.last()).is_some_and(|l| now - l.2 > 0.15)
+    }
+
+    /// Sägeblatt: Stahlscheibe mit schräg gestellten Zähnen, Drehunschärfe und festem Glanz
+    fn draw_saw(&self, g: &mut Gfx, sid: u32, x: f32, y: f32, c: [u8; 3], t: f32) {
+        let sr = SAW_R as f32;
+        let a = t * 24.0 + sid as f32;
+        self.trail(g, sid, [200, 210, 230], 6.0, 2.0);
+        g.shadow(x + 2.0, y + 3.0, sr * 0.8, 0.8);
+        draw_circle(x, y, sr + 2.0, cola([210, 216, 230], 0.12));
+        const TEETH: usize = 12;
+        let step = TAU / TEETH as f32;
+        let mut pts = Vec::with_capacity(TEETH * 3);
+        for j in 0..TEETH {
+            let b = a + j as f32 * step;
+            for (off, rr) in [(0.0, sr - 3.2), (0.6, sr + 1.2), (0.72, sr - 2.4)] {
+                let bb = b + step * off;
+                pts.push((x + bb.cos() * rr, y + bb.sin() * rr));
+            }
+        }
+        let outline: Vec<(f32, f32)> = pts.iter().map(|&(px, py)| (x + (px - x) * 1.12, y + (py - y) * 1.12)).collect();
+        poly(&outline, col([40, 42, 52]));
+        poly(&pts, col([212, 218, 232]));
+        draw_circle(x, y, sr * 0.5, col([136, 142, 158]));
+        draw_circle_lines(x, y, sr * 0.5, 1.0, col([92, 96, 110]));
+        for j in 0..3 {
+            // Kühlschlitze drehen mit
+            let b = a + j as f32 * TAU / 3.0;
+            draw_line(
+                x + b.cos() * 2.8,
+                y + b.sin() * 2.8,
+                x + (b + 0.5).cos() * 4.8,
+                y + (b + 0.5).sin() * 4.8,
+                1.2,
+                col([70, 74, 88]),
+            );
+        }
+        draw_circle(x, y, 2.4, col(c));
+        draw_circle_lines(x, y, 2.4, 1.0, col(DARKC));
+        arc(x, y, sr * 0.8, -2.5, -1.6, 1.5, cola([255, 255, 255], 0.75)); // Licht von links oben
+        g.light([230, 235, 255], x, y, 22.0, 2.0);
+    }
+
+    /// Kanonenkugel: schweres Eisen mit Glanz, glüht kurz nach dem Abschuss, zieht eine Luftschliere
+    fn draw_cannon(&self, g: &mut Gfx, sid: u32, x: f32, y: f32, age: f32, c: [u8; 3]) {
+        let cr = CANNON_R as f32;
+        let heat = (1.0 - age / 0.7).clamp(0.0, 1.0);
+        self.trail(g, sid, mix([150, 150, 160], [255, 150, 60], heat), 10.0, 1.5 + 3.0 * heat);
+        if let Some(a) = self.heading(sid) {
+            for j in 1..=3 {
+                let d = j as f32 * 4.0;
+                draw_circle(
+                    x - a.cos() * d,
+                    y - a.sin() * d,
+                    cr - j as f32,
+                    cola([20, 20, 26], 0.24 - 0.06 * j as f32),
+                );
+            }
+        }
+        g.shadow(x + 4.0, y + 6.0, cr + 2.0, 1.0);
+        draw_circle(x, y, cr + 1.0, col([8, 8, 12]));
+        draw_circle(x, y, cr, col([38, 39, 46]));
+        draw_circle(x - 1.5, y - 1.5, cr * 0.78, col([54, 56, 66]));
+        draw_circle(x - 3.0, y - 3.0, cr * 0.45, col([80, 83, 96]));
+        draw_circle(x - 4.5, y - 4.5, 2.2, col([190, 194, 208]));
+        arc(x, y, cr - 0.5, 0.3, 1.3, 1.0, cola(c, 0.55)); // Randlicht in Spielerfarbe
+        if heat > 0.0 {
+            draw_circle(x, y, cr, cola([255, 110, 40], 0.35 * heat));
+            g.light([255, 120, 40], x, y, cr * 2.4, 6.0 * heat);
+        }
+    }
+
+    /// Bumerang: V-Form aus Holz mit Streifen in Spielerfarbe, zwei blasse Kopien als Drehschleier
+    fn draw_rang(&self, g: &mut Gfx, sid: u32, x: f32, y: f32, c: [u8; 3], t: f32) {
+        let a = t * 18.0 + sid as f32;
+        self.trail(g, sid, [255, 190, 110], 6.0, 2.0);
+        g.shadow(x + 3.0, y + 5.0, 7.0, 0.8);
+        for (lag, alpha) in [(0.7, 0.16), (0.35, 0.32), (0.0, 1.0)] {
+            boomerang(x, y, a - lag, alpha, c);
+        }
+        g.light([255, 170, 80], x, y, 18.0, 2.5);
+    }
+
+    /// Klebt die Bombe schon? Beim Haften setzt der Server die Lebenszeit neu (Alter + Zündzeit).
+    fn sticky_stuck(&self, sid: u32, age: f32, life: f32, now: f64) -> bool {
+        (life - 4.0).abs() > 0.02 || (age > 0.2 && self.still(sid, now))
+    }
+
+    /// Klebebombe unter den Panzern: Wirkungskreis mit Countdown, Klang beim Haften
+    fn draw_sticky_field(&mut self, sid: u32, x: f32, y: f32, age: f32, life: f32, now: f64) {
+        if !self.sticky_stuck(sid, age, life, now) {
+            return;
+        }
+        let fuse = STICKY_FUSE as f32;
+        let left = (life - age).max(0.0);
+        if self.marks.insert((sid, 7)) {
+            self.sound("splat", Some(x), 1.0);
+            self.parts.burst(P::Dust, x, y, 8.0, 120.0, 0.4, 3.0, o([110, 220, 70]).drag(5.0));
+        }
+        super::weapons::field(x, y, STICKY_BLAST as f32, [140, 255, 90], fuse - left, fuse);
+    }
+
+    /// Klebebombe über den Panzern (klebt sie an einem, muss man sie sehen): Glibber bzw. Klecks
+    pub(super) fn draw_stickies(&self, g: &mut Gfx, view: &View, now: f64) {
+        for p in view.shots.iter().filter(|p| p.kind == Kind::Sticky) {
+            let (x, y, age, life) = (p.x as f32, p.y as f32, p.age as f32, p.life as f32);
+            self.draw_sticky(g, p.id, x, y, age, life, now);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw_sticky(&self, g: &mut Gfx, sid: u32, x: f32, y: f32, age: f32, life: f32, now: f64) {
+        let t = now as f32;
+        let fuse = STICKY_FUSE as f32;
+        let left = (life - age).max(0.0);
+        let stuck = self.sticky_stuck(sid, age, life, now);
+        let k = if stuck { (1.0 - left / fuse).clamp(0.0, 1.0) } else { 0.0 };
+        let blink = (age * if stuck { 6.0 + 16.0 * k } else { 4.0 }) as i32 % 2 == 1;
+        let (dark, goo) = ([30, 70, 24], [110, 220, 70]);
+        if stuck {
+            let mut rnd = Rng::new(sid as u64 * 31 + 7);
+            let pts: Vec<(f32, f32)> = (0..14)
+                .map(|j| {
+                    let b = j as f32 * TAU / 14.0;
+                    let r = 7.5 + rnd.uniform(-1.5, 2.5) as f32;
+                    (x + b.cos() * r, y + b.sin() * r)
+                })
+                .collect();
+            for _ in 0..4 {
+                let b = rnd.uniform(0.0, TAU as f64) as f32;
+                let d = rnd.uniform(10.0, 13.0) as f32;
+                draw_circle(x + b.cos() * d, y + b.sin() * d, 1.6, col(goo));
+            }
+            poly(&pts, col(dark));
+            let inner: Vec<(f32, f32)> = pts.iter().map(|&(px, py)| (x + (px - x) * 0.8, y + (py - y) * 0.8)).collect();
+            poly(&inner, col(goo));
+        } else {
+            let pts: Vec<(f32, f32)> = (0..12)
+                .map(|j| {
+                    let b = j as f32 * TAU / 12.0;
+                    let r = 5.6 + 1.1 * (3.0 * b + t * 11.0).sin() + 0.6 * (5.0 * b - t * 7.0).sin();
+                    (x + b.cos() * r, y + b.sin() * r)
+                })
+                .collect();
+            let outline: Vec<(f32, f32)> =
+                pts.iter().map(|&(px, py)| (x + (px - x) * 1.2, y + (py - y) * 1.2)).collect();
+            poly(&outline, col(dark));
+            poly(&pts, col(goo));
+        }
+        draw_circle(x - 2.0, y - 2.5, 1.5, col([220, 255, 190]));
+        draw_circle(x, y, 2.0, col(if blink { [255, 70, 60] } else { [90, 30, 30] }));
+        g.light([120, 255, 80], x, y, 18.0, if blink { 7.0 } else { 4.0 });
+        if blink && stuck {
+            g.light([255, 60, 40], x, y, 10.0, 6.0);
         }
     }
 
@@ -647,9 +917,25 @@ impl Renderer {
     fn draw_hole(&self, g: &mut Gfx, x: f32, y: f32, age: f32, t: f32) {
         let (travel, time) = (HOLE_TRAVEL as f32, HOLE_TIME as f32);
         if age < travel {
-            g.light([150, 60, 255], x, y, 22.0, 5.0);
-            draw_circle(x, y, HOLE_R as f32, col([6, 4, 10]));
-            draw_circle_lines(x, y, HOLE_R as f32 - 1.0, 2.0, col([170, 90, 255]));
+            // Im Flug schon ein kleiner Wirbel: Lichtpunkte stürzen spiralförmig hinein
+            let r = HOLE_R as f32;
+            for j in 0..4 {
+                // Leuchten nur am Rand, der Kern bleibt schwarz (Licht kommt erst nach den Formen)
+                let b = j as f32 * FRAC_PI_2 + t * 3.0;
+                g.light([150, 60, 255], x + b.cos() * (r + 6.0), y + b.sin() * (r + 6.0), 10.0, 3.0);
+            }
+            for j in 0..10 {
+                let ph = (t * 1.6 + j as f32 / 10.0).fract();
+                let rr = r + 14.0 * (1.0 - ph);
+                let b = j as f32 * 2.39 + t * 5.0 + ph * 2.5;
+                g.light([210, 150, 255], x + b.cos() * rr, y + b.sin() * rr, 3.0, 6.0 * ph);
+            }
+            for j in 0..2 {
+                let a0 = t * (7.0 + 2.0 * j as f32) + j as f32 * PI;
+                arc(x, y, r + 3.0 + 2.0 * j as f32, a0, a0 + 2.0, 1.5, col([190, 110, 255]));
+            }
+            draw_circle(x, y, r, col([4, 2, 8]));
+            draw_circle_lines(x, y, r, 1.0, col([230, 190, 255]));
             return;
         }
         let k = ((age - travel) / 0.4).min((travel + time - age) / 0.4).min(1.0);
@@ -1095,7 +1381,7 @@ impl Renderer {
                 let (r, half) = match w {
                     Item::Hammer => (HAMMER_RANGE, HAMMER_HALF),
                     Item::Chain => (CHAIN_RANGE, CHAIN_HALF),
-                    Item::Shear => (SHEAR_RANGE, SHEAR_ARC),
+                    Item::Shear => (SHEAR_RANGE, SHEAR_ARC / 2.0), // SHEAR_ARC ist der ganze Winkel
                     Item::Disarm => (DISARM_RANGE, DISARM_HALF),
                     _ => (PARRY_REACH, PARRY_HALF),
                 };
@@ -1240,8 +1526,23 @@ impl Renderer {
                     g.lit_ring(col(shade([170, 225, 255], f)), x, y, 14.0 + FROST_R as f32 * ease_out(k), 4.0);
                     g.light([120, 200, 255], x, y, FROST_R as f32, 6.0 * f);
                 }
-                FxData::Jump { x1, y1, .. } => {
-                    g.lit_ring(col(shade([150, 190, 255], f)), *x1 as f32, *y1 as f32, 10.0 + 30.0 * ease_out(k), 2.0)
+                FxData::Jump { x0, y0, x1, y1 } => {
+                    let (x0, y0, x1, y1) = (*x0 as f32, *y0 as f32, *x1 as f32, *y1 as f32);
+                    g.lit_ring(col(shade([150, 190, 255], f)), x1, y1, 10.0 + 30.0 * ease_out(k), 2.0);
+                    // Flugbahn als Bogen aus Düsenlicht, der vom Start her verlischt
+                    let n = 12;
+                    for j in 0..=n {
+                        let s = j as f32 / n as f32;
+                        let fade = (f * 1.6 - (1.0 - s)).clamp(0.0, 1.0);
+                        if fade <= 0.0 {
+                            continue;
+                        }
+                        let h = 4.0 * s * (1.0 - s) * 28.0;
+                        let (px, py) = (x0 + (x1 - x0) * s, y0 + (y1 - y0) * s - h);
+                        g.light([150, 190, 255], px, py, 7.0, 6.0 * fade);
+                        g.light([255, 170, 80], px, py, 3.0, 5.0 * fade);
+                    }
+                    g.lit_ring(col(shade([255, 160, 70], f * f)), x0, y0, 8.0 + 16.0 * ease_out(k), 2.0);
                 }
                 FxData::Disco { .. } => {
                     // bunte Scheinwerfer über das ganze Feld

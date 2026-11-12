@@ -108,8 +108,12 @@ pub struct Renderer {
     last_frame: f64,
     hist: HashMap<u32, Vec<(f32, f32, f64)>>,
     previous_weapon_shots: Vec<ShotView>,
+    /// Geschosse des letzten Bildes (wer fehlt, verpufft)
+    last_shots: Vec<ShotView>,
     weapon_echoes: Vec<(ShotView, f64)>,
     weapon_help: HashMap<usize, (Item, f64)>,
+    /// Sofortaktionen ohne Geschoss (Schere, Fächer, Zündpause, Konterklinge): (Waffe, x, y, Winkel, Zeit)
+    actions: Vec<(Item, f32, f32, f32, f64)>,
     after: HashMap<usize, Vec<(f32, f32, f32, f64)>>,
     prev: HashMap<usize, TankView>,
     flying: Vec<Flying>,
@@ -165,8 +169,10 @@ impl Renderer {
             last_frame: get_time(),
             hist: HashMap::new(),
             previous_weapon_shots: Vec::new(),
+            last_shots: Vec::new(),
             weapon_echoes: Vec::new(),
             weapon_help: HashMap::new(),
+            actions: Vec::new(),
             after: HashMap::new(),
             prev: HashMap::new(),
             flying: Vec::new(),
@@ -238,8 +244,10 @@ impl Renderer {
         self.tracks.clear();
         self.hist.clear();
         self.previous_weapon_shots.clear();
+        self.last_shots.clear();
         self.weapon_echoes.clear();
         self.weapon_help.clear();
+        self.actions.clear();
         self.after.clear();
         self.prev.clear();
         self.box_seen.clear();
@@ -324,7 +332,7 @@ impl Renderer {
                 self.flash = 0.0;
                 self.trauma = 0.0;
             }
-            self.track_shots(view, now);
+            self.track_shots(view, arena, now);
             self.track_weapon_releases(view, now);
             self.emit(view, arena, vdt, now);
         }
@@ -400,8 +408,10 @@ impl Renderer {
             for tk in order {
                 self.draw_tank(g, tk, now);
             }
+            self.draw_stickies(g, view, now);
             self.draw_fx(g, view, now);
             self.draw_weapon_releases(g, now);
+            self.draw_actions(g, now);
             self.draw_flying(g);
             for (jx, jy, ang) in std::mem::take(&mut self.jets) {
                 let jet = &g.spr.jet;

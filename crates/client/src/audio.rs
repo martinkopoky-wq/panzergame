@@ -123,6 +123,41 @@ fn sound_table() -> Vec<(&'static str, Vec<Layer>)> {
             ],
         ),
         ("saw", vec![l(900.0, 1300.0, 0.45, Saw, 0.07, 0.3, 2.0)]),
+        // Sägeblatt schleift an der Wand: kreischender Sägezahn plus helles Rauschen
+        ("grind", vec![l(2300.0, 1700.0, 0.2, Saw, 0.06, 0.5, 5.0), l(7000.0, 3000.0, 0.2, Noise, 0.14, 1.0, 6.0)]),
+        // Kanonenkugel prallt ab: dumpfer Schlag
+        ("thud", vec![l(120.0, 45.0, 0.3, Sin, 0.42, 0.0, 6.0), l(900.0, 150.0, 0.25, Noise, 0.24, 1.0, 6.0)]),
+        // Klebebombe haftet
+        ("splat", vec![l(520.0, 140.0, 0.14, Sin, 0.18, 0.3, 6.0), l(1800.0, 400.0, 0.12, Noise, 0.16, 1.0, 8.0)]),
+        // Geschossschere: zwei metallische Klicks
+        (
+            "snip",
+            vec![
+                l(3300.0, 2700.0, 0.04, Sq, 0.07, 0.3, 9.0),
+                ld(4300.0, 3100.0, 0.05, Sq, 0.07, 0.3, 9.0, 0.07),
+                l(8000.0, 4000.0, 0.14, Noise, 0.12, 1.0, 6.0),
+            ],
+        ),
+        // Entwaffnungsfächer: Luftstoß
+        ("whoosh", vec![sw(400.0, 2000.0, 0.3, Noise, 0.22, 1.0, 0.0), l(320.0, 150.0, 0.25, Sin, 0.08, 0.0, 4.0)]),
+        // Konterklinge: Klinge trifft Kugel
+        (
+            "clang",
+            vec![
+                l(1250.0, 1180.0, 0.35, Sq, 0.06, 0.1, 6.0),
+                l(1870.0, 1800.0, 0.3, Sin, 0.08, 0.0, 5.0),
+                l(6000.0, 2000.0, 0.08, Noise, 0.18, 1.0, 9.0),
+            ],
+        ),
+        // Zündpause: fallender Ton und zwei Uhrticks
+        (
+            "pause",
+            vec![
+                l(900.0, 300.0, 0.4, Sin, 0.13, 0.0, 3.0),
+                l(1400.0, 1400.0, 0.04, Sq, 0.08, 0.0, 6.0),
+                ld(1400.0, 1400.0, 0.04, Sq, 0.06, 0.0, 6.0, 0.16),
+            ],
+        ),
         ("plasma", vec![l(180.0, 520.0, 0.5, Sq, 0.1, 0.3, 2.0), l(2200.0, 600.0, 0.45, Noise, 0.12, 1.0, 3.0)]),
         ("cannon", vec![l(70.0, 30.0, 0.6, Sin, 0.55, 0.0, 4.0), l(1800.0, 150.0, 0.5, Noise, 0.45, 1.0, 4.0)]),
         ("orbit", vec![sw(300.0, 1800.0, 1.4, Sin, 0.1, 0.0, 0.0)]),

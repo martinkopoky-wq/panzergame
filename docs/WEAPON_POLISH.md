@@ -44,6 +44,17 @@ Lokale Ergebnisse: `target/weapon-review/comparison.png`, `final/manifest.json`,
 - Sofortaktionen (Geschossschere, Entwaffnen, Zündpause, Konterklinge) brauchen weitere eigene Auslöse- und Trefferanimationen. Geräusche sind technisch eingebunden; eine Hörprobe und menschliche Verständlichkeitsprüfung stehen aus.
 - Neue menschliche Blindtests und Balancing bleiben offen. Bot-Ergebnisse dienen hier der Regression, nicht der Balanceentscheidung.
 
+## Zweiter Durchgang am 12. November 2026
+
+Nur Client-Optik und Klang, Spielregeln und Netzformat unverändert.
+
+- Mündungsfeuer als geformter Blitz (`P::Muzzle`, additive Dreiecke über `Gfx::lit_tri`), ein Blitz pro Panzer und Bild. Raketen zünden mit Rückstrahl hinter dem Panzer, die Kanone mit Rauchkranz und Druckring.
+- Abpraller mit Wandnormale: Funken fliegen von der Wand weg. Sägeblatt schleift (Funkenregen, Kerbe, Klang `grind`), Kanonenkugel prallt schwer ab (Staub, Wandsplitter, Klang `thud`). Geschosse, die ohne Knall enden, verpuffen (`fizzle`).
+- Neu gezeichnet: Sägeblatt, Kanonenkugel, Bumerang, Schwarzes Loch im Flug, Klebebombe (Klecks mit Countdown, über den Panzern gezeichnet), Öllache, Bärenfalle, Plasmakugel. Phasenkugel flimmert in Wänden, Fernlenkrakete zeigt die Funkverbindung, Sprungdüse die Flugbahn.
+- Sofortwaffen ohne Geschoss zeigen ihre Auslösung in der echten Reichweite (`detect_action`/`draw_actions` in `render/weapons.rs`): Geschossschere, Entwaffnungsfächer, Zündpause (dazu Uhrring an angehaltenen Kugeln), Konterklinge. Erkannt wird der Einsatz an Munition bzw. Waffe im Snapshot; bei Einzelladungen enthält das Munitionsfeld die freien normalen Kugeln.
+- Behoben: vertauschte Aufräum-Bedingung der Geschoss-Historie seit v2.3.1 (keine Schweife, keine Abpraller, falsche Flugrichtungen). Zielhilfe der Geschossschere halb so breit wie zuvor, also jetzt wie die echte Wirkung.
+- Vorher/Nachher-Bögen: `target/weapon-review/polish-1112/`.
+
 ## Vollständiger übernommener Blindtest
 
 Bewertung 1 = unklar, 4 = gut erkennbar. Jede hier aufgeführte Waffe hat die neue Bedienhilfe; die zusätzliche Arbeit dieses Durchgangs steht rechts.

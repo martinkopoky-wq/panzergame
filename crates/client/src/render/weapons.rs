@@ -4,8 +4,8 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use macroquad::prelude::*;
 use panzer_core::consts::*;
-use panzer_core::items::Kind;
-use panzer_core::snap::{ShotView, View};
+use panzer_core::items::{Item, Kind};
+use panzer_core::snap::{ShotView, TankView, View};
 
 use super::Renderer;
 use crate::gfx::*;
@@ -33,6 +33,29 @@ pub(super) fn sector(x: f32, y: f32, a: f32, radius: f32, half: f32, c: [u8; 3])
     arc(x, y, radius, a - half, a + half, 1.5, col(c));
     for b in [a - half, a + half] {
         draw_line(x, y, x + b.cos() * radius, y + b.sin() * radius, 1.0, cola(c, 0.5));
+    }
+}
+
+/// Wurde die Sofortwaffe `w` zwischen zwei Bildern benutzt? Bei Einzelladungen steht im
+/// Munitionsfeld die Zahl freier normaler Kugeln, nicht die Waffe; `dropped` = liegt als Kiste am Boden.
+fn instant_used(w: Item, before_ammo: i32, weapon: Option<Item>, ammo: i32, dropped: bool) -> bool {
+    if weapon == Some(w) {
+        w.has_ammo() && ammo < before_ammo
+    } else {
+        weapon.is_none() && (!w.has_ammo() || before_ammo == 1) && !dropped
+    }
+}
+
+fn sector_fill(x: f32, y: f32, a: f32, radius: f32, half: f32, c: Color) {
+    for j in 0..12 {
+        let a0 = a - half + 2.0 * half * j as f32 / 12.0;
+        let a1 = a - half + 2.0 * half * (j + 1) as f32 / 12.0;
+        draw_triangle(
+            vec2(x, y),
+            vec2(x + a0.cos() * radius, y + a0.sin() * radius),
+            vec2(x + a1.cos() * radius, y + a1.sin() * radius),
+            c,
+        );
     }
 }
 
@@ -108,6 +131,155 @@ impl Renderer {
                 Kind::Cross => {
                     crosshair(x, y, CROSS_R as f32, crate::raster::shade(c, fade));
                     g.light(c, x, y, CROSS_R as f32, fade * 6.0);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Sofortwaffen erzeugen kein Geschoss. Man erkennt den Einsatz daran, dass die Munition sinkt
+    /// oder die letzte Ladung weg ist, ohne dass sie als Kiste am Boden liegt (das wäre Entwaffnung).
+    pub(super) fn detect_action(&mut self, before: &TankView, tk: &TankView, view: &View, now: f64) {
+        let Some(w) = before.weapon.filter(|w| matches!(w, Item::Shear | Item::Disarm | Item::Pause | Item::Parry))
+        else {
+            return;
+        };
+        let dropped = view.boxes.iter().any(|b| b.item == w && (b.x - tk.x).hypot(b.y - tk.y) < 14.0);
+        if !instant_used(w, before.ammo, tk.weapon, tk.ammo, dropped) {
+            return;
+        }
+        let (x, y, a) = (tk.x as f32, tk.y as f32, tk.a as f32);
+        self.actions.retain(|act| now - act.4 < 1.5);
+        self.actions.push((w, x, y, a, now));
+        let sound = match w {
+            Item::Shear => "snip",
+            Item::Disarm => "whoosh",
+            Item::Pause => "pause",
+            _ => "clang",
+        };
+        self.sound(sound, Some(x), 1.0);
+    }
+
+    /// Wirkung der Sofortwaffen sichtbar machen, in ihren echten Reichweiten
+    pub(super) fn draw_actions(&self, g: &mut Gfx, now: f64) {
+        for &(w, x, y, a, at) in &self.actions {
+            let dt = (now - at) as f32;
+            match w {
+                Item::Shear => {
+                    // Zwei Stahlklingen stehen kurz offen über dem Kegel und schnappen dann zu.
+                    // Nach dem Zuschnappen schnell weg, sonst sieht es wie ein Laserstrahl aus.
+                    let (shut, out) = (0.16, 0.07);
+                    if dt >= shut + out {
+                        continue;
+                    }
+                    let (range, half) = (SHEAR_RANGE as f32, SHEAR_ARC as f32 / 2.0);
+                    let close = (dt / shut).min(1.0).powi(2);
+                    let fade = if dt < shut { 1.0 } else { 1.0 - (dt - shut) / out };
+                    let c = [170, 222, 255];
+                    sector_fill(x, y, a, range, half, cola(c, 0.08 * fade));
+                    for side in [-1.0, 1.0] {
+                        let b = a + side * half * (1.0 - close);
+                        let (cb, sb) = (b.cos(), b.sin());
+                        let (nx, ny) = (-sb * side, cb * side);
+                        // Klinge: breit am Gelenk, spitz am Ende; Rücken nach außen, Schneide innen
+                        let root = vec2(x + cb * 16.0, y + sb * 16.0);
+                        let tip = vec2(x + cb * range, y + sb * range);
+                        let back = root - vec2(nx, ny) * 6.0 + vec2(cb, sb) * 10.0;
+                        draw_triangle(root, tip, back, Color::new(0.74, 0.78, 0.86, 0.8 * fade));
+                        g.lit_line(colk(c, 0.9 * fade), root.x, root.y, tip.x, tip.y, 2.0);
+                    }
+                    draw_circle(x + a.cos() * 16.0, y + a.sin() * 16.0, 3.5, Color::new(0.35, 0.37, 0.42, fade));
+                    if close > 0.85 {
+                        let m = range * 0.55;
+                        g.light(c, x + a.cos() * m, y + a.sin() * m, 36.0, 6.0 * fade);
+                    }
+                }
+                Item::Disarm => {
+                    // drei goldene Wellen laufen durch den Fächer
+                    let k = dt / 0.4;
+                    if k >= 1.0 {
+                        continue;
+                    }
+                    let (range, half) = (DISARM_RANGE as f32, DISARM_HALF as f32);
+                    let c = [255, 206, 110];
+                    sector_fill(x, y, a, range, half, cola(c, 0.09 * (1.0 - k)));
+                    for j in 0..3 {
+                        let r = range * (k * 1.25 - j as f32 * 0.15);
+                        if r <= 14.0 || r > range {
+                            continue;
+                        }
+                        let f = (1.0 - r / range).max(0.25) * (1.0 - k);
+                        let n = 10;
+                        for i in 0..n {
+                            let a0 = a - half + 2.0 * half * i as f32 / n as f32;
+                            let a1 = a - half + 2.0 * half * (i + 1) as f32 / n as f32;
+                            g.lit_line(
+                                colk(c, 1.2 * f),
+                                x + a0.cos() * r,
+                                y + a0.sin() * r,
+                                x + a1.cos() * r,
+                                y + a1.sin() * r,
+                                3.0,
+                            );
+                        }
+                    }
+                }
+                Item::Pause => {
+                    // Uhr-Ring breitet sich aus und steht, solange angehaltene Kugeln warten
+                    let total = PAUSE_TIME as f32;
+                    if dt >= total {
+                        continue;
+                    }
+                    let grow = ease_out(dt / 0.18);
+                    let fade = (1.0 - dt / total).powf(0.6);
+                    let r = PAUSE_RANGE as f32 * grow;
+                    let c = [184, 178, 241];
+                    draw_circle(x, y, r, cola(c, 0.07 * fade));
+                    g.lit_ring(colk(c, 1.1 * fade), x, y, r, 2.0);
+                    for j in 0..12 {
+                        let b = j as f32 * TAU / 12.0;
+                        let inner = if j % 3 == 0 { r - 12.0 } else { r - 7.0 };
+                        draw_line(
+                            x + b.cos() * inner,
+                            y + b.sin() * inner,
+                            x + b.cos() * r,
+                            y + b.sin() * r,
+                            2.0,
+                            cola(c, 0.8 * fade),
+                        );
+                    }
+                    // Zeiger läuft in der Haltezeit einmal herum
+                    let hand = -FRAC_PI_2 + TAU * (dt / total);
+                    let (hx, hy) = (x + hand.cos() * (r - 14.0).max(0.0), y + hand.sin() * (r - 14.0).max(0.0));
+                    draw_line(x, y, hx, hy, 2.0, cola([235, 232, 255], fade));
+                    arc(x, y, r + 4.0, -FRAC_PI_2, hand, 2.0, cola(c, fade));
+                }
+                Item::Parry => {
+                    // Klinge zieht als Sichel durch den Abwehrwinkel
+                    let k = dt / 0.24;
+                    if k >= 1.0 {
+                        continue;
+                    }
+                    let half = PARRY_HALF as f32;
+                    let head = a - half + 2.0 * half * ease_out((k / 0.5).min(1.0));
+                    let fade = 1.0 - k;
+                    let r = PARRY_REACH as f32 * 0.8;
+                    let c = [255, 236, 190];
+                    let n = 14;
+                    for i in 0..n {
+                        let f0 = i as f32 / n as f32;
+                        let f1 = (i + 1) as f32 / n as f32;
+                        let (b0, b1) = (a - half + (head - a + half) * f0, a - half + (head - a + half) * f1);
+                        g.lit_line(
+                            colk(c, 1.4 * f1 * fade),
+                            x + b0.cos() * r,
+                            y + b0.sin() * r,
+                            x + b1.cos() * r,
+                            y + b1.sin() * r,
+                            1.0 + 4.0 * f1,
+                        );
+                    }
+                    g.light(c, x + head.cos() * r, y + head.sin() * r, 22.0, 7.0 * fade);
                 }
                 _ => {}
             }
@@ -379,5 +551,29 @@ impl Renderer {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_charge_use_is_seen_although_ammo_field_counts_bullets() {
+        // Zündpause hat eine Ladung, im Feld stehen 5 freie Kugeln, danach ist die Waffe weg
+        assert!(instant_used(Item::Pause, 5, None, 5, false));
+        // Entwaffnet: Waffe weg, liegt aber als Kiste am Boden
+        assert!(!instant_used(Item::Pause, 5, None, 5, true));
+        // noch in der Hand, das Feld ändert sich nur durch normale Kugeln
+        assert!(!instant_used(Item::Pause, 5, Some(Item::Pause), 4, false));
+    }
+
+    #[test]
+    fn multi_charge_use_counts_down() {
+        assert!(instant_used(Item::Shear, 2, Some(Item::Shear), 1, false));
+        assert!(instant_used(Item::Shear, 1, None, 5, false));
+        assert!(!instant_used(Item::Shear, 2, Some(Item::Shear), 2, false));
+        // Wundertüte ersetzt die Waffe: kein Einsatz
+        assert!(!instant_used(Item::Shear, 2, Some(Item::Gold), 1, false));
     }
 }
