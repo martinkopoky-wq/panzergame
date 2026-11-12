@@ -152,4 +152,6 @@ Getestet: Testsuite auf Linux, Windows und macOS in CI, .deb per `apt` auf Ubunt
 
 **Gelernt:** Das Munitionsfeld im Snapshot ist bei Waffen mit nur einer Ladung die Zahl freier normaler Kugeln (`reload_state`), nicht die Waffenladung. Den Einsatz einer Sofortwaffe erkennt der Client daran, dass die Waffe weg ist und nicht als Kiste am Boden liegt. Licht wird erst nach allen Formen additiv gezeichnet: Was dunkel bleiben soll (Kern des Schwarzen Lochs), darf kein Licht in der Mitte bekommen.
 
-**Offen:** Website- und Launcher-Videos zeigen noch die alte Optik (neu aufnehmen nach Abnahme). Release als 2.3.2 wäre sinnvoll, weil der Schweif-Fehler in 2.3.1 steckt.
+**Offen:** Website- und Launcher-Videos zeigen noch die alte Optik (neu aufnehmen nach Abnahme).
+
+**Nachtrag, v2.3.2:** Dieser Waffen-Polish samt Schweif-Fix erscheint als 2.3.2 (keine neue Spieleigenschaft, nur die letzte Zahl). PROTO bleibt 11, 2.2.0 bis 2.3.2 spielen zusammen, der Server muss für die Neuerungen nicht neu. Erstes Release, das der Agent mit Martins Freigabe komplett selbst gemacht hat, Ablauf jetzt im Skill `panzer-release` (`~/.claude/skills/panzer-release/`, mit `verify_release.sh`). Veröffentlicht als v2.3.2 am 2026-11-12: alle Jobs grün (Linux, Windows, macOS, Paketinstallation auf Ubuntu 22.04/24.04 und Debian 12/13), am echten Release geprüft: alle Prüfsummen (10 Dateien), `latest` und der Website-Downloadlink zeigen auf v2.3.2, der Server aus dem Release startet hier mit 2 Bots auf UDP. Website und Docker-Image sind auf `main` neu gebaut.
