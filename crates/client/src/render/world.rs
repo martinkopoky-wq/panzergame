@@ -1574,8 +1574,8 @@ impl Renderer {
                     let (x, y) = (*x as f32, *y as f32);
                     if *mystery && age < 0.5 {
                         // Glücksrad
-                        let shown = pool[(age * 22.0) as usize + fx.id as usize % pool.len()];
-                        let shown = pool[pool.iter().position(|&p| p == shown).unwrap_or(0) % pool.len()];
+                        // Modulo über die ganze Summe: sonst liefen Rad + id über das Ende (Absturz)
+                        let shown = pool[((age * 22.0) as usize + fx.id as usize) % pool.len()];
                         g.sprite(&g.spr.boxes[&shown], x, y - 40.0, 0.0, 1.0, WHITE);
                         continue;
                     }
