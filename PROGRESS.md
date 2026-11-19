@@ -155,3 +155,13 @@ Getestet: Testsuite auf Linux, Windows und macOS in CI, .deb per `apt` auf Ubunt
 **Offen:** Website- und Launcher-Videos zeigen noch die alte Optik (neu aufnehmen nach Abnahme).
 
 **Nachtrag, v2.3.2:** Dieser Waffen-Polish samt Schweif-Fix erscheint als 2.3.2 (keine neue Spieleigenschaft, nur die letzte Zahl). PROTO bleibt 11, 2.2.0 bis 2.3.2 spielen zusammen, der Server muss für die Neuerungen nicht neu. Erstes Release, das der Agent mit Martins Freigabe komplett selbst gemacht hat, Ablauf jetzt im Skill `panzer-release` (`~/.claude/skills/panzer-release/`, mit `verify_release.sh`). Veröffentlicht als v2.3.2 am 2026-11-12: alle Jobs grün (Linux, Windows, macOS, Paketinstallation auf Ubuntu 22.04/24.04 und Debian 12/13), am echten Release geprüft: alle Prüfsummen (10 Dateien), `latest` und der Website-Downloadlink zeigen auf v2.3.2, der Server aus dem Release startet hier mit 2 Bots auf UDP. Website und Docker-Image sind auf `main` neu gebaut.
+
+## 2026-11-19: Zufälliger Absturz bei der Wundertüte
+
+**Ursache:** Das Glücksrad über dem Panzer beim Aufheben einer Wundertüte (`draw_fx_ui` in `render/world.rs`) indizierte `pool[rad + id % len]` statt `pool[(rad + id) % len]`. Bei hoher Effekt-id lief der Index über das Ende der 90 Einträge (index out of bounds), grob bei jeder achten Wundertüte. Steckt seit der Rust-Version (5af1893) in allen Releases, nur im Client.
+
+**Gefunden:** Ohne Absturzlog. Ein temporärer Core-Stresstest (~20k Seeds, alle Regeln, Kommen und Gehen, alle Items, zufällig drückende „Affen“-Spieler, Release und Debug) fand nichts, die Spiellogik ist sauber. Dann 6× `panzer solo 7` headless im Docker-Image `panzer-headless`: ein Client starb nach ~12 min mit genau dieser Meldung. Container ohne `--rm` starten, sonst ist das Log weg.
+
+**Geprüft:** Mit dem Fix 6 Clients je 19 min (zusammen ~2 h) ohne Absturz, ganze Suite grün.
+
+**Nachtrag, v2.3.3:** Veröffentlicht als v2.3.3 am 2026-11-19 (nur die letzte Zahl, PROTO bleibt 11, 2.2.0 bis 2.3.3 spielen zusammen, Server muss nicht neu): alle Jobs grün (Release, Website, Docker), am echten Release geprüft: alle Prüfsummen (10 Dateien), `latest` und der Website-Downloadlink zeigen auf v2.3.3, der Server aus dem Release startet hier mit 2 Bots auf UDP.
